@@ -59,6 +59,16 @@ export function hostReducer(state: State, event: HostEvent | { type: 'limit'; li
   }
 }
 
+/** What ending the session does; `running` is the agent or shell still to stop, if any. */
+function endingText(running: string | null, viewers: number): string {
+  const effects = [
+    running && `${running} stops`,
+    viewers > 0 && `${viewers === 1 ? '1 viewer is' : `${viewers} viewers are`} disconnected`,
+  ].filter(Boolean);
+  const first = effects.join(', and ');
+  return `${first ? `${first.charAt(0).toUpperCase()}${first.slice(1)}. ` : ''}The invite code stops working.`;
+}
+
 /** The host's session: the agent's terminal, the invite code and everything viewers see. */
 interface Props {
   /** How the host follows the session; the host's terminal is always shown. */
@@ -186,11 +196,7 @@ export function HostScreen({ view, onView, onEnded }: Props) {
       <StatusBar info={statusBar} folder={folderName || undefined} />
       {confirmEnd && (
         <ConfirmDialog title="End the session for everyone?" confirm="End session" danger onConfirm={end} onCancel={() => setConfirmEnd(false)}>
-          <p>
-            {terminal ? 'The shell' : agentName} stops
-            {viewers > 0 ? `, and ${viewers === 1 ? '1 viewer is' : `${viewers} viewers are`} disconnected` : ''}. The invite code stops
-            working.
-          </p>
+          <p>{endingText(state.exited === null ? (terminal ? 'The shell' : agentName) : null, viewers)}</p>
         </ConfirmDialog>
       )}
       <Toast message={toast} />

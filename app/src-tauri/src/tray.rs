@@ -112,8 +112,12 @@ pub fn update<R: Runtime>(app: &AppHandle<R>, folder: &str, agent: AgentId, summ
 }
 
 /// Removes the icon: no session is hosted.
+///
+/// On the main thread: AppKit aborts the app when a status item is removed from any other, and
+/// ending a session runs on a command's worker thread.
 pub fn remove<R: Runtime>(app: &AppHandle<R>) {
-    let _ = app.remove_tray_by_id(TRAY_ID);
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || drop(handle.remove_tray_by_id(TRAY_ID)));
 }
 
 #[cfg(test)]

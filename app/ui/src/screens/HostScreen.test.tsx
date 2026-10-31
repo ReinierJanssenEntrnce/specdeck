@@ -127,6 +127,11 @@ describe('host screen', () => {
     act(() => emit({ type: 'exited', code: 0 }));
     expect(screen.getByText(/The shell has exited\. Viewers can still read the session/)).toBeInTheDocument();
     expect(screen.getByText('Shell exited')).toBeInTheDocument();
+    // An exited shell no longer stops when the session ends.
+    await userEvent.click(screen.getByRole('button', { name: 'End session' }));
+    const dialog = screen.getByRole('alertdialog', { name: 'End the session for everyone?' });
+    expect(dialog).not.toHaveTextContent('The shell stops');
+    expect(dialog).toHaveTextContent('The invite code stops working.');
   });
 
   it('never asks the host how to follow, and offers only the step detail', async () => {
