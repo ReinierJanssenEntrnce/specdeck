@@ -94,7 +94,14 @@ async fn terminal_only_agent_takes_host_input_and_resizes() {
     assert!(records.iter().enumerate().all(|(i, r)| r.seq() == i as u64));
 
     // No events from this agent: only the engine's own entries, the start and the folder's git
-    // state (not a repository here).
+    // state (not a repository here), which a background check reports shortly after the start.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !session.timeline().iter().any(|e| matches!(e.entry, Entry::Git { .. })) {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("no git state");
     let entries: Vec<Entry> = session.timeline().into_iter().map(|e| e.entry).collect();
     assert_eq!(
         entries,
