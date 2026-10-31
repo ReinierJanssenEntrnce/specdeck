@@ -156,7 +156,7 @@ Every hook payload carries `transcript_path`, the JSONL transcript Claude Code w
 | Notifications | `tauri-plugin-notification`, sent only when the window is unfocused or closed |
 | Dialogs | `tauri-plugin-dialog` for folder choice and confirmations |
 | Appearance | Webview `prefers-color-scheme` plus Tauri theme events; system font stack; `window-vibrancy` (macOS vibrancy sidebar, Windows Mica) with an opaque fallback on Linux; overlay title bar on macOS |
-| Recent folders | Settings store; also File > Open Recent; on macOS also the Dock menu |
+| Recent folders | Settings store; also File > Open Recent. No Dock menu: Tauri has no API for it, and File > Open Recent already offers the folders |
 | Window state | `tauri-plugin-window-state` (keeps windows on-screen); pane sizes in the settings store |
 | Single instance, deep links | `tauri-plugin-single-instance` forwarding argv/URLs to the running instance; `tauri-plugin-deep-link` |
 | Settings | `tauri-plugin-store` JSON in the app config directory: username, notifications on/off, recent folders, last used agent |

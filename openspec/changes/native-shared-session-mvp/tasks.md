@@ -62,7 +62,7 @@
 
 ## 7. Native integration
 
-- [ ] 7.1 Build per-platform menus with `CmdOrCtrl` shortcuts, Open Recent, and the macOS Dock menu; keep terminal-conflicting keys for the terminal. Verify on each OS: Cmd/Ctrl+F opens search, Ctrl+C without selection interrupts Claude on Windows and Linux
+- [ ] 7.1 Build per-platform menus with `CmdOrCtrl` shortcuts and Open Recent; keep terminal-conflicting keys for the terminal. Verify on each OS: Cmd/Ctrl+F opens search, Ctrl+C without selection interrupts Claude on Windows and Linux
 - [ ] 7.2 Add the tray / menu-bar icon while hosting (state, viewer count, open window, copy code, close session). Verify on each OS, and that starting the app again reopens the window on GNOME without an AppIndicator extension
 - [ ] 7.3 Add notifications (viewer joined/left, Claude waiting, session ended) only when unfocused, with a settings toggle. Verify on each OS including that clicking focuses the session
 - [ ] 7.4 Add appearance: follow OS light/dark live (including terminal theme), system fonts, macOS overlay title bar and vibrancy, Windows Mica, Linux opaque fallback. Verify by switching the OS theme with the app open on each OS
