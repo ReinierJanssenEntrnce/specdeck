@@ -62,8 +62,8 @@
 
 ## 7. Native integration
 
-- [ ] 7.1 Build per-platform menus with `CmdOrCtrl` shortcuts and Open Recent; keep terminal-conflicting keys for the terminal. Verify on each OS: Cmd/Ctrl+F opens search, Ctrl+C without selection interrupts Claude on Windows and Linux
-- [ ] 7.2 Add the tray / menu-bar icon while hosting (state, viewer count, open window, copy code, close session). Verify on each OS, and that starting the app again reopens the window on GNOME without an AppIndicator extension
+- [x] 7.1 Build per-platform menus with `CmdOrCtrl` shortcuts and Open Recent; keep terminal-conflicting keys for the terminal. Verify on macOS (Windows and Linux in 8.3): Cmd/Ctrl+F opens search, Ctrl+C without selection interrupts Claude on Windows and Linux
+- [x] 7.2 Add the tray / menu-bar icon while hosting (state, viewer count, open window, copy code, close session). Verify on macOS (Windows and Linux in 8.3), and with 7.5 that starting the app again reopens the window on GNOME without an AppIndicator extension
 - [ ] 7.3 Add notifications (viewer joined/left, Claude waiting, session ended) only when unfocused, with a settings toggle. Verify on each OS including that clicking focuses the session
 - [ ] 7.4 Add appearance: follow OS light/dark live (including terminal theme), system fonts, macOS overlay title bar and vibrancy, Windows Mica, Linux opaque fallback. Verify by switching the OS theme with the app open on each OS
 - [ ] 7.5 Add window state and pane-size persistence, single instance and `specdeck://join/<code>` deep links (including the leave-current-session prompt). Verify on each OS by starting twice and opening a link from a browser
@@ -75,7 +75,7 @@
 
 - [ ] 8.1 Produce installers per platform (`.dmg` arm64 and x64, NSIS `.exe`, AppImage and `.deb`) with the `specdeck://` scheme registered; verify each installs and launches on a clean machine
 - [ ] 8.2 Add `scripts/measure-footprint` and record cold start and one-hour viewing memory on the reference machines; verify the targets (1.5 s, 250 MB) are met or report the gap
-- [ ] 8.3 Run the cross-platform checklist: host and viewer on different operating systems, a viewer relayed through TURN only, 20 viewers, window close and reopen with viewers connected, viewer reconnect after network loss; record results in `docs/verification.md`
+- [ ] 8.3 Run the cross-platform checklist: host and viewer on different operating systems, a viewer relayed through TURN only, 20 viewers, window close and reopen with viewers connected, viewer reconnect after network loss; on Windows and Linux the menus and shortcuts (Ctrl+F opens search, Ctrl+C without selection interrupts the agent) and the tray icon (including starting the app again on GNOME without an AppIndicator extension); record results in `docs/verification.md`
 
 ## Workflow follow-up
 
