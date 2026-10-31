@@ -13,6 +13,20 @@ function channel<T>(handler: (message: T) => void): Channel<T> {
   return ch;
 }
 
+/**
+ * Raw bytes from a channel. They arrive as an ArrayBuffer over the IPC protocol, but as a JSON
+ * array of numbers when Tauri falls back to postMessage.
+ */
+export function asArrayBuffer(message: ArrayBuffer | ArrayBufferView | number[]): ArrayBuffer {
+  if (message instanceof ArrayBuffer) return message;
+  if (ArrayBuffer.isView(message)) return new Uint8Array(message.buffer, message.byteOffset, message.byteLength).slice().buffer;
+  return new Uint8Array(message).buffer;
+}
+
+function bytesChannel(handler: (data: ArrayBuffer) => void): Channel<ArrayBuffer | ArrayBufferView | number[]> {
+  return channel((message) => handler(asArrayBuffer(message)));
+}
+
 export const tauriBridge: Bridge = {
   getProfile: () => invoke<Profile>('get_profile'),
   setUsername: (username) => invoke<Profile>('set_username', { username }),
@@ -25,7 +39,7 @@ export const tauriBridge: Bridge = {
   },
   startHosting: (agent, folder, cols, rows) => invoke('start_hosting', { agent, folder, cols, rows }),
   hostAttach: (terminal, events) =>
-    invoke('host_attach', { terminal: channel<ArrayBuffer>(terminal), events: channel<HostEvent>(events) }),
+    invoke('host_attach', { terminal: bytesChannel(terminal), events: channel<HostEvent>(events) }),
   hostInput: (data) => invoke('host_input', { data }),
   hostResize: (cols, rows) => invoke('host_resize', { cols, rows }),
   hostSetColors: (foreground, background) => invoke('host_set_colors', { foreground, background }),
@@ -34,7 +48,7 @@ export const tauriBridge: Bridge = {
   hostSetViewerLimit: (limit) => invoke('host_set_viewer_limit', { limit }),
   hostClose: () => invoke('host_close'),
   joinSession: (code, terminal, events) =>
-    invoke('join_session', { code, terminal: channel<ArrayBuffer>(terminal), events: channel<ViewEvent>(events) }),
+    invoke('join_session', { code, terminal: bytesChannel(terminal), events: channel<ViewEvent>(events) }),
   leaveSession: () => invoke('leave_session'),
   takeJoinLink: () => invoke<JoinLink | null>('take_join_link'),
   copyText: (text) => navigator.clipboard.writeText(text),
