@@ -133,6 +133,17 @@ As in SpecDeck 0.x (its design decision 6, verified in `docs/spikes/claude-hooks
 - Degraded mode: no event within 10 s of the host pressing Enter, or an unparsable payload, marks the timeline unavailable; the next valid event restores it.
 - Status for viewers (`working`, `waiting`) and the host's "Claude is waiting" notification come from the same events (`UserPromptSubmit`, `Stop`, `Notification`).
 
+### 10a. Usage from the Claude Code transcript
+
+Every hook payload carries `transcript_path`, the JSONL transcript Claude Code writes. The host reads it only when the path is a `.jsonl` file under Claude Code's projects folder (`~/.claude/projects`, or `$CLAUDE_CONFIG_DIR/projects`).
+
+- On `Stop`, `PostToolUse`, `PreCompact` and `SessionStart` the host reads only the lines added since its last read.
+- Each assistant message is counted once, by its message id: Claude Code repeats the same usage on several lines of one answer. Subagent transcripts next to the main one count towards the session total, not towards context fill.
+- Context fill is the latest main-conversation answer's input tokens plus cache-read and cache-write tokens. It is measured against 200k, or 1M when the model id ends in `[1m]` or usage already exceeds 200k; when the window size is unknown, only the token count is shown.
+- Usage travels as a timeline entry, `Usage`, carrying running totals and stamped like the other entries, so late joiners and reconnecting viewers get it through the existing timeline replay without a new message type. Per-prompt tokens are the difference between the `Usage` entries at the start and end of a prompt.
+- Claude Code's status-line feature (which reports cost and context) is not used: SpecDeck would have to replace the host's own status line. Money cost is not shown.
+- *Risk*: the transcript format is not a public interface. A line that cannot be parsed marks usage unavailable instead of showing wrong numbers; fixture tests guard the format.
+
 ### 11. Native integration through Tauri
 
 | Behaviour (`native-experience`) | Mechanism |

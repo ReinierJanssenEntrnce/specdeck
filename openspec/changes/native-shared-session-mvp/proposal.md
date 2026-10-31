@@ -7,7 +7,7 @@ SpecDeck today (the Electron app in `../claude-share`, version 0.x) lets a host 
 ## What Changes
 
 - New Tauri 2 desktop app, still called **SpecDeck** (version 1.0), for macOS, Windows and Linux; one install acts as host or viewer. It replaces the Electron app.
-- The host chooses the coding agent per session: Claude Code, OpenCode or omp. Terminal sharing works for all three; the timeline is built for Claude Code in this change, and OpenCode and omp run terminal-only until their event adapters follow in a later change.
+- The host chooses the coding agent per session: Claude Code, OpenCode or omp. Terminal sharing works for all three; the timeline is built for Claude Code in this change, and OpenCode and omp run terminal-only until their event adapters follow in a later change. For Claude Code, all participants also see the session's token usage and how full the context window is.
 - New Rust session engine: starts the chosen agent's CLI in a pty, mirrors the terminal, captures Claude Code hook events into a timeline, and streams everything to viewers over WebRTC data channels. No Node runtime ships with the app.
 - WebRTC runs in Rust on both host and viewer, so behaviour does not depend on each platform's webview.
 - New Rust signalling service (matchmaking and TURN credentials), deployed with coturn.
@@ -22,7 +22,7 @@ SpecDeck today (the Electron app in `../claude-share`, version 0.x) lets a host 
 - `session-hosting`: Starting and running a coding agent session (Claude Code, OpenCode or omp) on the host's machine with the host's own login: username, choosing the agent and a folder (with recent folders), exclusive host input and terminal size, keeping the session alive when the window closes, ending it.
 - `session-sharing`: Who can join and how: invite codes and join links, participant list, removing viewers, viewer limit, remote connectivity through NAT with relay fallback, end-to-end encryption, behaviour when the matchmaking service is unreachable.
 - `session-streaming`: Delivering the host's terminal to viewers as an exact, live, read-only mirror, including late join, reconnect, capacity and stream authenticity.
-- `session-timeline`: Turning Claude Code hook events into a timeline of prompts, responses, tool calls and file diffs, linked to terminal positions, with a degraded mode.
+- `session-timeline`: Turning Claude Code hook events into a timeline of prompts, responses, tool calls and file diffs, linked to terminal positions, with a degraded mode, and the session's token usage and context fill.
 - `viewer-experience`: Reading a shared session at one's own pace: follow and free-scroll, search, copy, jump to prompt, read-only interface, session status.
 - `native-experience`: How the app behaves as a native desktop app on each platform: menus and shortcuts, tray/menu-bar, notifications, appearance, single instance and deep links, and resource footprint.
 

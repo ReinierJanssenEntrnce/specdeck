@@ -19,6 +19,7 @@
 - [x] 2.6 Implement the hook payload adapter and timeline builder (prompts, live and final responses, tool calls and results including not-run, file changes with diffs, file reads, output-sequence stamping), using the hook payload fixtures copied from `../claude-share/spikes/claude-hooks/fixtures` into `crates/core/tests/fixtures/claude-hooks`. Verify all fixture tests pass
 - [x] 2.7 Implement degraded mode (no event within 10 s of Enter, or unparsable payload; recovery on the next valid event) and Claude status (`starting`, `working`, `waiting`, `exited`). Verify with tests for each transition
 - [x] 2.8 Implement the host session lifecycle in `core`: start with the chosen agent, input from host only, host resize, agent exit while session stays open, close (process ended, log deleted), timeline-not-supported and status `unknown` for agents without an event source. Verify with integration tests driving fake `claude` and `opencode` scripts
+- [ ] 2.9 Implement the usage reader: check that the transcript path is in Claude Code's own folder, read only new lines, count each message once (subagents in the session total), context fill and window size, and the `Usage` timeline entry. Verify with tests against sanitized transcript fixtures: a normal session, a compacted session, a subagent, a path outside Claude Code's folder, and a corrupt line
 
 ## 3. Protocol
 
@@ -56,6 +57,7 @@
 - [ ] 6.7 Implement close-window-keeps-session and reattach by local replay. Verify manually: close the window with a viewer connected, reopen, and see full scrollback while the viewer stays connected
 - [x] 6.8 Add the local two-app test setup: `just local-dev` starts the local signalling + coturn stack (4.3) and two app instances, a host and a viewer, each with its own profile (`SPECDECK_PROFILE`: separate settings and data directory, separate single-instance key) pointed at the local signalling service; `just local-down` stops it. Verify by hosting in one window, joining with the code in the other, and seeing output, timeline and participants live
 - [ ] 6.9 Write `docs/user-guide.md` for hosting and joining, and verify each step against the running app
+- [ ] 6.10 Show usage in the UI: a context meter in the host and viewer toolbars with the session total in its tooltip, tokens per prompt in the Timeline, an unavailable state, and nothing for OpenCode and omp. Verify with component tests and a live session
 
 ## 7. Native integration
 

@@ -68,6 +68,25 @@ Timeline entries SHALL appear for all participants while the session runs, in th
 - **WHEN** a viewer joins mid-session
 - **THEN** the viewer receives every timeline entry from the start of the session
 
+### Requirement: Session usage
+For a Claude Code session, all participants SHALL see how full the agent's context window is, the total tokens used in the session, and the tokens used per prompt. The figures SHALL update while the session runs and SHALL be complete for viewers who join late. Money cost SHALL NOT be shown.
+
+#### Scenario: Claude answers a prompt
+- **WHEN** Claude Code finishes answering a prompt
+- **THEN** every participant sees the context fill, the session total and that prompt's tokens updated
+
+#### Scenario: Late joiner sees usage
+- **WHEN** a viewer joins mid-session
+- **THEN** they see the same totals and per-prompt tokens as the host
+
+#### Scenario: Context compacted
+- **WHEN** Claude Code compacts its context
+- **THEN** the context fill drops, and the session total does not
+
+#### Scenario: Usage cannot be read
+- **WHEN** the transcript is missing or unreadable
+- **THEN** usage is shown as unavailable, and the session and timeline keep working
+
 ### Requirement: Degraded mode without structured events
 If structured events cannot be captured, the session SHALL still run and be shared as a terminal mirror, and all participants SHALL be told that the timeline is unavailable. If events arrive again, the timeline SHALL resume.
 
@@ -89,3 +108,7 @@ The timeline SHALL be built for Claude Code sessions. For an agent whose events 
 #### Scenario: Jump to prompt without a timeline
 - **WHEN** a viewer is in an omp session
 - **THEN** the prompt list and touched files list are not offered, and terminal search, copy and follow still work
+
+#### Scenario: No usage without a timeline
+- **WHEN** the host starts an OpenCode or omp session
+- **THEN** no usage is shown
