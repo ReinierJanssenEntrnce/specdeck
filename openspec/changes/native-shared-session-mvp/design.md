@@ -171,6 +171,7 @@ Reference machines: Apple M1 with 8 GB (macOS 15), an x64 laptop with 8 GB (Wind
 
 ## Risks / Trade-offs
 
+- [macOS Local Network privacy blocks an app launched from Finder or a link until the user allows it, and ties the permission to the code signature] → `NSLocalNetworkUsageDescription` explains the prompt; the bundle is ad-hoc signed with its identifier (`signingIdentity: "-"`), so the permission holds per build. Only a Developer ID signature (with signed installers, a later change) keeps it across updates. Found in task 7.5: started from a terminal the app inherits the terminal's permission, which hides the problem in development.
 - [Replay time for long, redraw-heavy sessions] → Measure on real sessions (task 2.4); compressed batches; checkpoints from the headless mirror if needed.
 - [xterm.js performance or WebGL availability on WebKitGTK] → Use the WebGL renderer where available, fall back to the DOM renderer; include Linux in the footprint measurements.
 - [libdatachannel's C++/CMake build on Windows and in CI] → Vendored feature; build on all three platforms in CI from the first task; `webrtc-rs` as fallback behind the same `core` interface.
