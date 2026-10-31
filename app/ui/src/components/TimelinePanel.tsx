@@ -16,6 +16,8 @@ interface Props {
   steps?: Steps;
   /** The terminal is hidden, so the panel says what the agent does right now. */
   live?: boolean;
+  /** Opens the reader on the files of an OpenSpec change that a step wrote or changed. */
+  onReadPlan?: (change: string, paths: string[]) => void;
   /** A terminal session, which never has a timeline. */
   terminal?: boolean;
   /** Turns matching the current search, by prompt id. */
@@ -28,7 +30,7 @@ interface Props {
 
 const TIME = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 
-export function TimelinePanel({ model, timelineSupported, agentName, steps = 'details', live = false, terminal = false, matches, current, onJump }: Props) {
+export function TimelinePanel({ model, timelineSupported, agentName, steps = 'details', live = false, onReadPlan, terminal = false, matches, current, onJump }: Props) {
   // Summaries per turn, in order: whether a plan was written or updated depends on earlier turns.
   const summaries = useMemo(() => {
     const seen = new Set<string>();
@@ -129,6 +131,7 @@ export function TimelinePanel({ model, timelineSupported, agentName, steps = 'de
               key={turn.promptId}
               turn={turn}
               summary={steps === 'summary' ? summaries[i]! : null}
+              onReadPlan={onReadPlan}
               number={i + 1}
               match={matches.has(turn.promptId)}
               current={current === turn.promptId}
@@ -166,10 +169,11 @@ function LiveLine({ turn, plansBefore, agentName }: { turn: Turn; plansBefore: S
 
 const OUTCOME_ICON = { running: Loader, succeeded: Check, failed: X, 'not-run': CircleSlash } as const;
 
-/** One summary line; opens to the tool calls it stands for. */
-function StepView({ step, onJump }: { step: Step; onJump: (seq: number) => void }) {
+/** One summary line; opens to the tool calls it stands for. A plan step also offers to read it. */
+function StepView({ step, onJump, onReadPlan }: { step: Step; onJump: (seq: number) => void; onReadPlan?: (change: string, paths: string[]) => void }) {
   const Icon = OUTCOME_ICON[step.outcome];
-  return (
+  const plan = step.plan;
+  const details = (
     <details className={`step ${step.outcome}`}>
       <summary onClick={() => onJump(step.tools[0]!.outputSeq)}>
         <Icon className="status-icon" aria-hidden />
@@ -183,11 +187,22 @@ function StepView({ step, onJump }: { step: Step; onJump: (seq: number) => void 
       </div>
     </details>
   );
+  if (!plan || !onReadPlan) return details;
+  const paths = [...new Set(step.tools.flatMap((item) => item.changes.map((change) => change.path)))];
+  return (
+    <div className="step-row">
+      {details}
+      <button className="btn small" onClick={() => onReadPlan(plan, paths)}>
+        {step.label === 'Wrote the plan' ? 'Read the plan' : 'Read the changes'}
+      </button>
+    </div>
+  );
 }
 
 function TurnView({
   turn,
   summary,
+  onReadPlan,
   number,
   match,
   current,
@@ -195,6 +210,7 @@ function TurnView({
 }: {
   turn: Turn;
   summary: SummaryEntry[] | null;
+  onReadPlan?: (change: string, paths: string[]) => void;
   number: number;
   match: boolean;
   current: boolean;
@@ -216,7 +232,7 @@ function TurnView({
       </button>
       {(summary ?? turn.items).map((item) =>
         item.kind === 'step' ? (
-          <StepView key={item.id} step={item} onJump={onJump} />
+          <StepView key={item.id} step={item} onJump={onJump} onReadPlan={onReadPlan} />
         ) : item.kind === 'text' ? (
           <Markdown key={item.id} text={item.text} />
         ) : item.kind === 'notice' ? (

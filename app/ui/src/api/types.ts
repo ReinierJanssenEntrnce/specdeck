@@ -23,6 +23,15 @@ export interface JoinLink {
 
 export type Steps = 'summary' | 'details';
 
+/** One document of an OpenSpec change, as its schema names it. */
+export interface PlanDocument {
+  id: string;
+  name: string;
+  /** Relative to the session folder; several for a document such as specs. */
+  paths: string[];
+  exists: boolean;
+}
+
 /** How someone follows sessions; the host's terminal is always shown. */
 export interface View {
   terminal: boolean;
@@ -88,6 +97,8 @@ export type TimelineEvent = Stamp &
     | { kind: 'file-change'; promptId: string; toolUseId: string; path: string; change: 'created' | 'edited' | 'deleted'; hunks: DiffHunk[] }
     | { kind: 'file-read'; promptId: string; toolUseId: string; path: string }
     | { kind: 'attention'; message: string }
+    | { kind: 'document'; promptId: string; toolUseId: string; path: string; text: string | null }
+    | { kind: 'plan'; change: string; documents: PlanDocument[]; tasks: { done: number; total: number } }
     | { kind: 'timeline-unavailable'; reason: string }
     | { kind: 'timeline-available' }
     | { kind: 'usage'; tokens: TokenCounts; contextTokens?: number; contextWindow?: number }

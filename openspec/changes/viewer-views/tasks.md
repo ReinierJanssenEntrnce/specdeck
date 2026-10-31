@@ -20,9 +20,9 @@
 
 ## 4. Plans and documents
 
-- [ ] 4.1 Add the document reader: formatted Markdown, close at any time, "too large" with diffs offered, changes since last read marked New or Changed with labels (decision 7) and a switch to hide the marks; verify with unit tests for the block comparison and UI tests for first read (no marks), a revised section, per-participant last read, and the large-document case
-- [ ] 4.2 Add the plan card: documents in schema order with "changed" markers, task progress, live updates, several plans newest first; verify with UI tests on `Plan` fixtures for the default schema, a custom schema with a feature brief, and a task tick
-- [ ] 4.3 Link plan steps to the reader ("Read the plan", "Read the changes"), opening on the documents that step changed; verify with a UI test
+- [x] 4.1 Add the document reader: formatted Markdown, close at any time, "too large" with diffs offered, changes since last read marked New or Changed with labels (decision 7) and a switch to hide the marks; verify with unit tests for the block comparison and UI tests for first read (no marks), a revised section, per-participant last read, and the large-document case
+- [x] 4.2 Add the plan card: documents in schema order with "changed" markers, task progress, live updates, several plans newest first; verify with UI tests on `Plan` fixtures for the default schema, a custom schema with a feature brief, and a task tick
+- [x] 4.3 Link plan steps to the reader ("Read the plan", "Read the changes"), opening on the documents that step changed; verify with a UI test
 
 ## 5. Documentation and integration
 

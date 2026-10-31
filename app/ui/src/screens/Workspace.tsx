@@ -7,6 +7,9 @@ import { SearchBar } from '../components/SearchBar';
 import { SidePanel } from '../components/SidePanel';
 import { Splitter, useSideWidth } from '../components/Splitter';
 import { TimelinePanel } from '../components/TimelinePanel';
+import { buildDocuments, type Plan } from '../model/documents';
+import { PlanCard, planReaderDocuments, planTitle } from '../components/PlanCard';
+import { DocumentReader, type ReaderDocument } from '../components/DocumentReader';
 import { buildTimeline, turnText } from '../model/timeline';
 import { decodeTerminalStream } from '../terminal/stream';
 import { TerminalView, type TerminalHandle } from '../terminal/TerminalView';
@@ -58,6 +61,33 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
   const [sideWidth, setSideWidth] = useSideWidth();
 
   const model = useMemo(() => buildTimeline(props.timeline), [props.timeline]);
+  const written = useMemo(() => buildDocuments(props.timeline), [props.timeline]);
+  // Which version of each document this participant last read, for the whole session.
+  const lastRead = useRef(new Map<string, number>());
+  const [reading, setReading] = useState<{ heading: string; docs: ReaderDocument[]; initial: string } | null>(null);
+  const readDocument = useCallback((path: string) => {
+    setReading({ heading: 'Document', docs: [{ title: path.split('/').at(-1) ?? path, path }], initial: path });
+  }, []);
+  const readPlan = useCallback(
+    (plan: Plan, path: string) => {
+      setReading({ heading: `Plan · ${planTitle(plan, written.documents)}`, docs: planReaderDocuments(plan), initial: path });
+    },
+    [written],
+  );
+  // From a step: the first file that step changed, in the plan's order.
+  const readStepPlan = useCallback(
+    (change: string, paths: string[]) => {
+      const plan = written.plans.find((p) => p.change === change);
+      const docs = plan ? planReaderDocuments(plan) : paths.map((path) => ({ path, title: path.split('/').at(-1) ?? path }));
+      const initial = docs.find((doc) => paths.includes(doc.path))?.path ?? paths[0];
+      if (!initial) return;
+      setReading({ heading: plan ? `Plan · ${planTitle(plan, written.documents)}` : 'Plan', docs, initial });
+    },
+    [written],
+  );
+  const onRead = useCallback((path: string, version: number) => {
+    lastRead.current.set(path, version);
+  }, []);
   const timelineMatches = useMemo(() => {
     const needle = term.trim().toLowerCase();
     if (!needle) return [];
@@ -188,24 +218,40 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
       label: 'Timeline',
       badge: props.timelineSupported ? model.turns.length : undefined,
       content: (
-        <TimelinePanel
-          model={model}
-          timelineSupported={props.timelineSupported}
-          agentName={props.agentName}
-          steps={props.steps}
-          live={props.terminalHidden}
-          terminal={props.terminal}
-          matches={new Set(timelineMatches)}
-          current={timelineIndex >= 0 ? (timelineMatches[timelineIndex] ?? null) : null}
-          onJump={jump}
-        />
+        <>
+          {written.plans.map((plan) => (
+            <PlanCard key={plan.change} plan={plan} versions={written.documents} lastRead={lastRead.current} onOpen={(path) => readPlan(plan, path)} />
+          ))}
+          <TimelinePanel
+            model={model}
+            timelineSupported={props.timelineSupported}
+            agentName={props.agentName}
+            steps={props.steps}
+            live={props.terminalHidden}
+            onReadPlan={readStepPlan}
+            terminal={props.terminal}
+            matches={new Set(timelineMatches)}
+            current={timelineIndex >= 0 ? (timelineMatches[timelineIndex] ?? null) : null}
+            onJump={jump}
+          />
+        </>
       ),
     },
     {
       id: 'files',
       label: 'Files',
       badge: props.timelineSupported ? model.files.length : undefined,
-      content: <FilesPanel files={model.files} timelineSupported={props.timelineSupported} agentName={props.agentName} terminal={props.terminal} onJump={jump} />,
+      content: (
+        <FilesPanel
+          files={model.files}
+          timelineSupported={props.timelineSupported}
+          agentName={props.agentName}
+          readable={new Set(written.documents.keys())}
+          onRead={readDocument}
+          terminal={props.terminal}
+          onJump={jump}
+        />
+      ),
     },
     {
       id: 'people',
@@ -283,6 +329,18 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
         </div>
       )}
       <SidePanel tabs={tabs} selected={tab} onSelect={setTab} />
+      {reading && (
+        <DocumentReader
+          heading={reading.heading}
+          docs={reading.docs}
+          initial={reading.initial}
+          versions={written.documents}
+          lastRead={lastRead.current}
+          onRead={onRead}
+          changes={model.files.flatMap((file) => file.changes)}
+          onClose={() => setReading(null)}
+        />
+      )}
     </main>
   );
 });

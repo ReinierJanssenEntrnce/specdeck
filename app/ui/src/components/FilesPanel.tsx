@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Eye, FilePen, FilePlus, FileX, Files } from 'lucide-react';
+import { ArrowLeft, BookOpen, Eye, FilePen, FilePlus, FileX, Files } from 'lucide-react';
 import type { TouchedFile } from '../model/timeline';
 import { DiffView } from './DiffView';
 
@@ -7,13 +7,16 @@ interface Props {
   files: TouchedFile[];
   timelineSupported: boolean;
   agentName: string;
+  /** Documents that can be read whole, and how to open one. */
+  readable?: Set<string>;
+  onRead?: (path: string) => void;
   /** A terminal session, which never lists files. */
   terminal?: boolean;
   onJump: (outputSeq: number) => void;
 }
 
 /** Every file the agent read or changed; a changed file opens to all its diffs, in order. */
-export function FilesPanel({ files, timelineSupported, agentName, terminal = false, onJump }: Props) {
+export function FilesPanel({ files, timelineSupported, agentName, readable, onRead, terminal = false, onJump }: Props) {
   const [open, setOpen] = useState<string | null>(null);
   const file = files.find((f) => f.path === open);
 
@@ -44,6 +47,11 @@ export function FilesPanel({ files, timelineSupported, agentName, terminal = fal
         <strong className="selectable" style={{ fontFamily: 'var(--mono)', fontSize: 12.5 }}>
           {file.path}
         </strong>
+        {readable?.has(file.path) && onRead && (
+          <button className="btn small" style={{ justifySelf: 'start' }} onClick={() => onRead(file.path)}>
+            <BookOpen aria-hidden /> Read the document
+          </button>
+        )}
         {file.changes.map((change, i) => (
           <div key={i} style={{ display: 'grid', gap: 4 }}>
             <button className="btn ghost small" style={{ justifySelf: 'start' }} onClick={() => onJump(change.outputSeq)}>

@@ -109,6 +109,66 @@ describe('summary steps', () => {
   });
 });
 
+describe('documents', () => {
+  it('opens a changed document from the Files tab, and remembers it was read', async () => {
+    const at = (n: number) => ({ outputSeq: n, at: n });
+    const timeline = [
+      ...demoTimeline,
+      { ...at(5), kind: 'tool-call' as const, promptId: 'p2', toolUseId: 'd1', toolName: 'Write', input: { file_path: 'README.md' } },
+      { ...at(5), kind: 'tool-result' as const, promptId: 'p2', toolUseId: 'd1', status: 'succeeded' as const },
+      { ...at(5), kind: 'file-change' as const, promptId: 'p2', toolUseId: 'd1', path: 'README.md', change: 'created' as const, hunks: [] },
+      { ...at(5), kind: 'document' as const, promptId: 'p2', toolUseId: 'd1', path: 'README.md', text: '# Webshop\n\nRun it with npm start.' },
+    ];
+    renderWorkspace({ timeline });
+    await userEvent.click(screen.getByRole('tab', { name: /Files/ }));
+    await userEvent.click(screen.getByRole('button', { name: /README\.md/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Read the document' }));
+    const reader = screen.getByRole('dialog', { name: 'README.md' });
+    expect(within(reader).getByRole('heading', { name: 'Webshop' })).toBeInTheDocument();
+    await userEvent.click(within(reader).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('plan steps', () => {
+  it('open the reader on the documents a step changed', async () => {
+    const at = (n: number) => ({ outputSeq: n, at: n });
+    const dir = 'openspec/changes/demo';
+    const write = (n: number, prompt: string, name: string, file: string, text: string, created: boolean) => [
+      { ...at(n), kind: 'tool-call' as const, promptId: prompt, toolUseId: name, toolName: created ? 'Write' : 'Edit', input: { file_path: `${dir}/${file}` } },
+      { ...at(n), kind: 'tool-result' as const, promptId: prompt, toolUseId: name, status: 'succeeded' as const },
+      { ...at(n), kind: 'file-change' as const, promptId: prompt, toolUseId: name, path: `${dir}/${file}`, change: created ? ('created' as const) : ('edited' as const), hunks: [] },
+      { ...at(n), kind: 'document' as const, promptId: prompt, toolUseId: name, path: `${dir}/${file}`, text },
+    ];
+    const plan = {
+      ...at(9),
+      kind: 'plan' as const,
+      change: 'demo',
+      documents: [
+        { id: 'proposal', name: 'Proposal', paths: [`${dir}/proposal.md`], exists: true },
+        { id: 'design', name: 'Design', paths: [`${dir}/design.md`], exists: true },
+      ],
+      tasks: { done: 0, total: 0 },
+    };
+    const timeline = [
+      { ...at(1), kind: 'prompt' as const, promptId: 'p1', text: '/opsx:propose demo' },
+      ...write(2, 'p1', 'w1', 'proposal.md', '# Demo plan', true),
+      ...write(3, 'p1', 'w2', 'design.md', '# Design\n\nFirst.', true),
+      { ...at(4), kind: 'prompt' as const, promptId: 'p2', text: 'change the design' },
+      ...write(5, 'p2', 'e1', 'design.md', '# Design\n\nSecond.', false),
+      plan,
+    ];
+    renderWorkspace({ timeline, steps: 'summary' });
+    const first = screen.getByRole('article', { name: 'Prompt 1' });
+    expect(within(first).getByText('Wrote the plan')).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('article', { name: 'Prompt 2' })).getByRole('button', { name: 'Read the changes' }));
+    const reader = screen.getByRole('dialog', { name: 'Design' });
+    expect(reader).toHaveTextContent('Plan · Demo plan');
+    expect(within(reader).getByRole('navigation', { name: 'Documents' })).toHaveTextContent('ProposalDesign');
+    expect(reader).toHaveTextContent('Second.');
+  });
+});
+
 describe('hidden terminal', () => {
   it('keeps receiving output while hidden and comes back without a remount', () => {
     const ref = createRef<WorkspaceHandle>();
