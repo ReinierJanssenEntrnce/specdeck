@@ -105,4 +105,34 @@ describe('menu commands', () => {
     expect(document.documentElement.dataset.platform).toBe('windows');
     expect(document.documentElement).toHaveClass('translucent');
   });
+
+  it('joins straight away when a join link opened the app', async () => {
+    const bridge = fakeBridge('start', { takeJoinLink: vi.fn(async () => ({ code: '7K2M-9QXH-4TPA' })) });
+    renderWith(bridge, <App />);
+    await waitFor(() => expect(bridge.joinSession).toHaveBeenCalledWith('7K2M-9QXH-4TPA', expect.any(Function), expect.any(Function)));
+  });
+
+  it('says when a join link does not work', async () => {
+    await setup('start', { takeJoinLink: vi.fn(async () => ({ error: 'That link is not a SpecDeck invite. Ask the host for a new one.' })) });
+    expect(await screen.findByRole('alert')).toHaveTextContent('That link is not a SpecDeck invite.');
+  });
+
+  it('asks before leaving a watched session for a join link', async () => {
+    const links = [null, { code: 'AAAA-BBBB-CCCC' }];
+    const bridge = await setup('start', { takeJoinLink: vi.fn(async () => links.shift() ?? null) });
+    await userEvent.type(screen.getByLabelText('Invite code'), '7K2M9QXH4TPA');
+    await userEvent.click(screen.getByRole('button', { name: /Join/ }));
+    act(() => menu({ id: 'join-link' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Leave this session?' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Leave' }));
+    expect(bridge.leaveSession).toHaveBeenCalled();
+    await waitFor(() => expect(bridge.joinSession).toHaveBeenLastCalledWith('AAAA-BBBB-CCCC', expect.any(Function), expect.any(Function)));
+  });
+
+  it('keeps a hosted session when a join link comes in', async () => {
+    const bridge = await setup('host', { takeJoinLink: vi.fn(async () => ({ code: 'AAAA-BBBB-CCCC' })) });
+    act(() => menu({ id: 'join-link' }));
+    expect(await screen.findByText('End this session before you host or join another.')).toBeInTheDocument();
+    expect(bridge.joinSession).not.toHaveBeenCalled();
+  });
 });

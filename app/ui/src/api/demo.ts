@@ -197,6 +197,7 @@ export function demoBridge(screen: string): Bridge {
       }, 300);
     },
     leaveSession: async () => {},
+    takeJoinLink: async () => null,
     copyText: async () => {},
     onMenu: () => () => {},
   };

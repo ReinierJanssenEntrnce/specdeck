@@ -23,8 +23,10 @@ use tauri::{
     AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_window_state::StateFlags;
 
 use crate::host::{HostEvent, HostNotice, HostRuntime, SharingState, StartOptions, Summary};
 use crate::settings::Settings;
@@ -45,6 +47,8 @@ struct AppState {
     viewer: Mutex<Option<ViewerRuntime>>,
     /// The main window shows the desktop through it (macOS vibrancy, Windows 11 Mica).
     translucent: AtomicBool,
+    /// A join link the window has not handled yet.
+    join_link: Mutex<Option<JoinLink>>,
 }
 
 impl AppState {
@@ -375,12 +379,48 @@ fn parse_hex(color: &str) -> Option<specdeck_core::mirror::Rgb> {
 /// Separate settings and data per profile, so two apps can run side by side for local testing
 /// (`just local-dev`). Only debug builds read `SPECDECK_PROFILE`.
 fn profile_dir(base: PathBuf) -> PathBuf {
-    match std::env::var("SPECDECK_PROFILE").ok().filter(|_| cfg!(debug_assertions)) {
-        Some(profile) if !profile.is_empty() && profile != "default" => {
-            base.join("profiles").join(profile)
-        }
-        _ => base,
+    match test_profile() {
+        Some(profile) => base.join("profiles").join(profile),
+        None => base,
     }
+}
+
+/// The `SPECDECK_PROFILE` of a debug build, unless it is the default one.
+fn test_profile() -> Option<String> {
+    std::env::var("SPECDECK_PROFILE")
+        .ok()
+        .filter(|profile| cfg!(debug_assertions) && !profile.is_empty() && profile != "default")
+}
+
+/// A join link the window has not handled yet: the code, or why the link does not work.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JoinLink {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+/// A `specdeck://` link was opened: keep it for the window and bring the window to the front.
+/// The window takes it with `take_join_link`, at start or when told about it.
+fn open_link(app: &AppHandle, link: &str) {
+    let parsed = InviteCode::from_join_link(link.trim());
+    let pending = match parsed {
+        Ok(code) => JoinLink { code: Some(code.to_string()), error: None },
+        Err(_) => JoinLink {
+            code: None,
+            error: Some("That link is not a SpecDeck invite. Ask the host for a new one.".into()),
+        },
+    };
+    *app.state::<AppState>().join_link.lock().unwrap() = Some(pending);
+    open_main_window(app);
+    let _ = app.emit_to("main", "menu", MenuCommand { id: "join-link".into(), path: None });
+}
+
+#[tauri::command]
+async fn take_join_link(state: State<'_, AppState>) -> Result<Option<JoinLink>, String> {
+    Ok(state.join_link.lock().unwrap().take())
 }
 
 fn open_main_window(app: &AppHandle) {
@@ -568,7 +608,29 @@ fn window_title() -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // One instance per user: starting the app again, or a join link on Windows and Linux, goes
+    // to the running one (links through the deep-link plugin). The test profiles of
+    // `just local-dev` run side by side instead.
+    if test_profile().is_none() {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            open_main_window(app);
+        }));
+    }
+    // Window size and position per profile; the settings window always opens centred.
+    let window_state_file = match test_profile() {
+        Some(profile) => format!(".window-state-{profile}.json"),
+        None => ".window-state.json".into(),
+    };
+    let app = builder
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_filename(window_state_file)
+                .with_denylist(&["settings"])
+                .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                .build(),
+        )
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
@@ -594,9 +656,24 @@ pub fn run() {
                 host: Mutex::new(None),
                 viewer: Mutex::new(None),
                 translucent: AtomicBool::new(false),
+                join_link: Mutex::new(None),
             });
             open_main_window(app.handle());
             refresh_menu(app.handle());
+            // Join links: the one the app was started with, and any opened while it runs.
+            #[cfg(any(windows, target_os = "linux"))]
+            let _ = app.deep_link().register_all();
+            if let Ok(Some(urls)) = app.deep_link().get_current()
+                && let Some(url) = urls.first()
+            {
+                open_link(app.handle(), url.as_str());
+            }
+            let links = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                if let Some(url) = event.urls().first() {
+                    open_link(&links, url.as_str());
+                }
+            });
             // A click on a notification brings the session to the front.
             let handle = app.handle().clone();
             let _ = app.notification().on_action(move |_| open_main_window(&handle));
@@ -634,6 +711,7 @@ pub fn run() {
             host_close,
             join_session,
             leave_session,
+            take_join_link,
         ])
         .build(tauri::generate_context!())
         .expect("error while building SpecDeck");

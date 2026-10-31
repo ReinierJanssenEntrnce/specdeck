@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { Bridge } from './bridge';
 import type { MenuCommand } from '../menu/menu';
-import type { HostEvent, Profile, ViewEvent } from './types';
+import type { HostEvent, JoinLink, Profile, ViewEvent } from './types';
 
 function channel<T>(handler: (message: T) => void): Channel<T> {
   const ch = new Channel<T>();
@@ -35,6 +35,7 @@ export const tauriBridge: Bridge = {
   joinSession: (code, terminal, events) =>
     invoke('join_session', { code, terminal: channel<ArrayBuffer>(terminal), events: channel<ViewEvent>(events) }),
   leaveSession: () => invoke('leave_session'),
+  takeJoinLink: () => invoke<JoinLink | null>('take_join_link'),
   copyText: (text) => navigator.clipboard.writeText(text),
   onMenu: (handler) => {
     const stop = listen<MenuCommand>('menu', (event) => handler(event.payload));

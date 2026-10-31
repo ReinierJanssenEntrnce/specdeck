@@ -15,6 +15,12 @@ export interface RecentFolder {
   name: string;
 }
 
+/** A `specdeck://join/…` link that opened the app: its code, or why it does not work. */
+export interface JoinLink {
+  code?: string;
+  error?: string;
+}
+
 export interface Profile {
   username: string | null;
   recentFolders: RecentFolder[];

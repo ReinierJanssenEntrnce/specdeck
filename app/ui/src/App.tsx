@@ -33,8 +33,24 @@ export function App() {
     });
 
   useEffect(() => bridge.onMenu(dispatchMenu), [bridge]);
+  // A join link that opened the app, or came in while it runs.
+  const takeJoinLink = async () => {
+    const link = await bridge.takeJoinLink();
+    if (!link) return;
+    if (link.error) {
+      if (screen.kind === 'start') setScreen({ kind: 'start', joinError: link.error });
+      return;
+    }
+    if (!link.code) return;
+    if (screen.kind === 'start') setScreen({ kind: 'viewer', code: link.code });
+    else if (screen.kind === 'viewer') setLeaveFor({ id: 'join-link', path: link.code });
+    // A hosted session says to end it first.
+    else dispatchMenu({ id: 'join' });
+  };
+
   useMenu((command) => {
     if (command.id === 'shortcuts') return setShortcuts(true);
+    if (command.id === 'join-link') return void takeJoinLink();
     // Changed in the settings window.
     if (command.id === 'profile-changed') return void refresh();
     if (!START_COMMANDS.has(command.id)) return;
@@ -48,6 +64,7 @@ export function App() {
       // A window reopened while a session runs goes straight back to it.
       .then((p) => {
         if (p.hosting) setScreen({ kind: 'host' });
+        else void takeJoinLink();
         const demo = import.meta.env.DEV ? new URLSearchParams(location.search).get('demo') : null;
         if (demo === 'viewer') setScreen({ kind: 'viewer', code: '7K2M9QXH4TPA' });
       })
@@ -79,6 +96,7 @@ export function App() {
       {screen.kind === 'host' && <HostScreen onEnded={() => refresh().then(() => setScreen({ kind: 'start' }))} />}
       {screen.kind === 'viewer' && (
         <ViewerScreen
+          key={screen.code}
           code={screen.code}
           onLeave={(retry) => setScreen(retry ? { kind: 'start', code: retry.code, joinError: retry.message } : { kind: 'start' })}
         />
@@ -107,8 +125,12 @@ export function App() {
           onCancel={() => setLeaveFor(null)}
           onConfirm={() => {
             void bridge.leaveSession();
-            setScreen({ kind: 'start' });
-            setStartCommand(leaveFor);
+            if (leaveFor.id === 'join-link' && leaveFor.path) {
+              setScreen({ kind: 'viewer', code: leaveFor.path });
+            } else {
+              setScreen({ kind: 'start' });
+              setStartCommand(leaveFor);
+            }
             setLeaveFor(null);
           }}
         >

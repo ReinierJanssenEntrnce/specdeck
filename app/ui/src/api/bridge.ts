@@ -3,7 +3,7 @@
 
 import type { MenuCommand } from '../menu/menu';
 import { createContext, useContext } from 'react';
-import type { AgentId, HostEvent, Profile, ViewEvent } from './types';
+import type { AgentId, HostEvent, JoinLink, Profile, ViewEvent } from './types';
 
 /** Receives terminal data as the binary stream described in src/terminal/stream.ts. */
 export type TerminalSink = (data: ArrayBuffer) => void;
@@ -26,6 +26,8 @@ export interface Bridge {
   hostClose(): Promise<void>;
   joinSession(code: string, terminal: TerminalSink, events: (event: ViewEvent) => void): Promise<void>;
   leaveSession(): Promise<void>;
+  /** The join link that opened the app or came in since, once; null when there is none. */
+  takeJoinLink(): Promise<JoinLink | null>;
   copyText(text: string): Promise<void>;
   /** Calls `handler` for each native menu command; returns a function that stops listening. */
   onMenu(handler: (command: MenuCommand) => void): () => void;
