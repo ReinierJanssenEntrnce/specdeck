@@ -755,7 +755,7 @@ mod tests {
     fn a_slow_viewer_falls_behind_without_holding_up_others_then_catches_up() {
         let dir = tempfile::tempdir().unwrap();
         let log = Arc::new(OutputLog::create(dir.path()).unwrap());
-        let view = SessionView::detached(AgentId::OpenCode, log.clone());
+        let view = SessionView::from_log(AgentId::OpenCode, log.clone());
         let key = SessionKey::generate();
         let (mut slow, mut fast) = (SlowSink::default(), FastSink::default());
         let (mut slow_state, mut fast_state) = (admitted(), admitted());
@@ -786,7 +786,7 @@ mod tests {
     fn catching_up_sends_compressed_batches() {
         let dir = tempfile::tempdir().unwrap();
         let log = Arc::new(OutputLog::create(dir.path()).unwrap());
-        let view = SessionView::detached(AgentId::OpenCode, log.clone());
+        let view = SessionView::from_log(AgentId::OpenCode, log.clone());
         let key = SessionKey::generate();
         for i in 0..1000 {
             log.append_output(format!("\x1b[2K\rline {i}\n").as_bytes()).unwrap();

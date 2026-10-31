@@ -113,9 +113,8 @@ impl SessionView {
         self.changes.send_modify(|n| *n += 1);
     }
 
-    /// A view of a log without a running agent, for tests.
-    #[cfg(test)]
-    pub(crate) fn detached(agent: AgentId, log: Arc<OutputLog>) -> Self {
+    /// A view of a log without a running agent, for replaying a recording and for tests.
+    pub fn from_log(agent: AgentId, log: Arc<OutputLog>) -> Self {
         Self {
             agent,
             log,

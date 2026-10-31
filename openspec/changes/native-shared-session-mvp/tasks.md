@@ -42,8 +42,8 @@
 - [x] 5.2 Implement per-viewer sender tasks reading from log cursors with buffered-amount backpressure and zstd history batches. Verify a test where one throttled viewer does not delay the pty or another viewer, and then catches up
 - [x] 5.3 Implement the viewer side: join with code, verify frames, drop and `resend` on gaps or failed signatures, automatic reconnect with resume token (also after a revoke), recreating the peer connection when no relay candidate arrives (coturn 437), the "network does not allow the connection" message when no connection can be made, session-ended handling. Verify tests for a 20-second outage and for a session closed during an outage
 - [x] 5.4 Implement "sharing unavailable" on the host (session runs locally, retries, code appears when signalling returns) and the viewer's "service cannot be reached" error. Verify with tests that stop and restart signalling
-- [ ] 5.5 Verify mirror exactness: a test runs recorded full-screen Claude Code, OpenCode and omp sessions with resizes, joins a viewer mid-way, and compares the host's and viewer's xterm-headless screen, colours and cursor
-- [ ] 5.6 Verify capacity: a load test with 20 viewers and continuous output keeps host input echo under 50 ms and delivers output to every viewer within 1 s
+- [x] 5.5 Verify mirror exactness: a test runs recorded full-screen Claude Code, OpenCode and omp sessions with resizes, joins a viewer mid-way, and compares the host's and viewer's xterm-headless screen, colours and cursor
+- [x] 5.6 Verify capacity: a load test with 20 viewers and continuous output keeps host input echo under 50 ms and delivers output to every viewer within 1 s
 
 ## 6. App UI
 

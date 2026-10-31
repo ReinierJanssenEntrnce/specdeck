@@ -14,6 +14,9 @@ importers:
       '@tauri-apps/cli':
         specifier: ^2.12.4
         version: 2.12.4
+      '@xterm/addon-serialize':
+        specifier: ^0.14.0
+        version: 0.14.0
       '@xterm/headless':
         specifier: ^6.0.0
         version: 6.0.0
@@ -512,6 +515,9 @@ packages:
 
   '@vitest/spy@5.0.5':
     resolution: {integrity: sha512-lwJRExuH417257Q5wv9QYugN9IMJkoxcrKrYxGPQkBzl7wlNpTUxD/5yNX4ESKVUIShKPgkGchYPFMWOOk0wzw==}
+
+  '@xterm/addon-serialize@0.14.0':
+    resolution: {integrity: sha512-uteyTU1EkrQa2Ux6P/uFl2fzmXI46jy5uoQMKEOM0fKTyiW7cSn0WrFenHm5vO5uEXX/GpwW/FgILvv3r0WbkA==}
 
   '@xterm/headless@6.0.0':
     resolution: {integrity: sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==}
@@ -1533,6 +1539,8 @@ snapshots:
       vite: 8.3.5
 
   '@vitest/spy@5.0.5': {}
+
+  '@xterm/addon-serialize@0.14.0': {}
 
   '@xterm/headless@6.0.0': {}
 

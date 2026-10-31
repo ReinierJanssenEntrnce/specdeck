@@ -23,5 +23,6 @@ tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
 which = "8"
 
 [dev-dependencies]
+base64 = "0.22"
 specdeck-signalling = { path = "../signalling" }
 env_logger = "0.11"

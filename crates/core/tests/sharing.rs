@@ -44,16 +44,21 @@ struct Hosted {
 /// Hosts a session running a fake agent that echoes each line it reads, and writes 3 MB of
 /// output for the line "flood".
 async fn host(url: &str, username: &str) -> Hosted {
-    let bin = tempfile::tempdir().unwrap();
-    let data = tempfile::tempdir().unwrap();
-    let agent = bin.path().join("opencode");
-    let script = r#"#!/bin/sh
+    host_with(url, username, ECHO_AGENT).await
+}
+
+const ECHO_AGENT: &str = r#"#!/bin/sh
 echo ready
 while read line; do
   if [ "$line" = flood ]; then head -c 3000000 /dev/zero | tr '\0' x; echo; echo flood-done
   else echo "got:$line"; fi
 done
 "#;
+
+async fn host_with(url: &str, username: &str, script: &str) -> Hosted {
+    let bin = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let agent = bin.path().join("opencode");
     std::fs::write(&agent, script).unwrap();
     std::fs::set_permissions(&agent, std::fs::Permissions::from_mode(0o755)).unwrap();
     let env: Environment =
@@ -398,4 +403,53 @@ async fn two_viewers_receive_a_burst_of_output_completely() {
         assert!(seen.records.iter().enumerate().all(|(i, seq)| *seq == i as u64));
     }
     eprintln!("both viewers had the 3 MB burst after {:?}", started.elapsed());
+}
+
+/// Twenty viewers while the agent writes continuously: the host's terminal stays responsive and
+/// every viewer gets the output within a second (session-streaming: Session capacity).
+#[tokio::test(flavor = "multi_thread")]
+async fn twenty_viewers_under_continuous_output() {
+    const BUSY_AGENT: &str = r#"#!/bin/sh
+( i=0; while true; do i=$((i+1)); echo "tick $i: the agent is writing continuously, about a hundred lines per second"; sleep 0.01; done ) &
+while read line; do echo "got:$line"; done
+"#;
+    let url = signalling().await;
+    let mut hosted = host_with(&url, "nick", BUSY_AGENT).await;
+    let code = ready(&mut hosted.events).await;
+
+    let mut viewers = Vec::new();
+    for i in 0..20 {
+        let (session, events) = join(&url, &code, &format!("viewer {i}"));
+        viewers.push((session, events, Seen::default()));
+    }
+    for (_, events, seen) in &mut viewers {
+        until(events, seen, |seen, _| seen.text.contains("tick")).await;
+    }
+
+    let log = hosted.session.log().clone();
+    let log_has = |marker: &str| {
+        log.read(0, usize::MAX).unwrap().iter().rev().take(200).any(|r| match r {
+            Record::Output { bytes, .. } => String::from_utf8_lossy(bytes).contains(marker),
+            Record::Resize { .. } => false,
+        })
+    };
+    let (mut echo_worst, mut viewer_worst) = (Duration::ZERO, Duration::ZERO);
+    for round in 0..5 {
+        let marker = format!("got:ping-{round}");
+        let typed = std::time::Instant::now();
+        hosted.session.input(format!("ping-{round}\r").as_bytes()).unwrap();
+        while !log_has(&marker) {
+            assert!(typed.elapsed() < Duration::from_secs(2), "no echo for {marker}");
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        let in_log = std::time::Instant::now();
+        echo_worst = echo_worst.max(in_log - typed);
+        for (_, events, seen) in &mut viewers {
+            until(events, seen, |seen, _| seen.text.contains(&marker)).await;
+            viewer_worst = viewer_worst.max(in_log.elapsed());
+        }
+    }
+    eprintln!("20 viewers: worst host echo {echo_worst:?}, worst viewer delay {viewer_worst:?}");
+    assert!(echo_worst < Duration::from_millis(50), "host echo took {echo_worst:?}");
+    assert!(viewer_worst < Duration::from_secs(1), "a viewer took {viewer_worst:?}");
 }

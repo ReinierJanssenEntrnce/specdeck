@@ -3952,6 +3952,7 @@ version = "1.0.0"
 dependencies = [
  "alacritty_terminal",
  "axum",
+ "base64 0.22.1",
  "datachannel",
  "env_logger",
  "futures-util",
