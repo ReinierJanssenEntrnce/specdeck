@@ -28,6 +28,8 @@ jobs:
       TAG: ${{ inputs.tag }}
       REPO: ${{ github.repository }}
       TAP_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+      # Without a Developer ID the app is ad-hoc signed; the cask then explains how to open it.
+      SIGNED: ${{ secrets.APPLE_CERTIFICATE != '' }}
     steps:
       - name: Check for the tap deploy key
         run: |
@@ -53,7 +55,9 @@ jobs:
           sha_arm=$(sha256sum dmg/SpecDeck-arm64.dmg | awk '{print $1}')
           sha_intel=$(sha256sum dmg/SpecDeck-x64.dmg | awk '{print $1}')
           mkdir -p tap/Casks
-          scripts/render-cask.sh "${TAG#v}" "$sha_arm" "$sha_intel" "$REPO" > tap/Casks/specdeck.rb
+          unsigned=""
+          [ "$SIGNED" = true ] || unsigned=unsigned
+          scripts/render-cask.sh "${TAG#v}" "$sha_arm" "$sha_intel" "$REPO" $unsigned > tap/Casks/specdeck.rb
           cat tap/Casks/specdeck.rb
       - name: Commit and push
         if: env.TAP_KEY != ''

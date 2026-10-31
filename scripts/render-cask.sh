@@ -1,11 +1,25 @@
 #!/bin/sh
 # Prints the Homebrew cask for a release (design decision 13).
-# Usage: scripts/render-cask.sh 1.0.0 <sha256 of SpecDeck-arm64.dmg> <sha256 of SpecDeck-x64.dmg> [owner/repo]
+# Usage: scripts/render-cask.sh 1.0.0 <sha256 of SpecDeck-arm64.dmg> <sha256 of SpecDeck-x64.dmg> [owner/repo] [unsigned]
+# With `unsigned` (no Developer ID yet), the cask says how to open the app past Gatekeeper.
 set -eu
 version=$1
 sha_arm=$2
 sha_intel=$3
 repo=${4:-nickhartjes/specdeck}
+unsigned=${5:-}
+
+caveats=""
+if [ "$unsigned" = unsigned ]; then
+  caveats='
+
+  caveats <<~EOS
+    This release of SpecDeck is not signed with an Apple Developer ID yet, so macOS
+    will not open it at first. Allow it once under System Settings > Privacy & Security
+    (Open Anyway), or run:
+      xattr -dr com.apple.quarantine "#{appdir}/SpecDeck.app"
+  EOS'
+fi
 
 cat <<CASK
 cask "specdeck" do
@@ -25,7 +39,7 @@ cask "specdeck" do
     strategy :github_latest
   end
 
-  depends_on macos: ">= :catalina"
+  depends_on :macos
 
   app "SpecDeck.app"
 
@@ -34,6 +48,6 @@ cask "specdeck" do
     "~/Library/Caches/com.entrnce.specdeck",
     "~/Library/Saved Application State/com.entrnce.specdeck.savedState",
     "~/Library/WebKit/com.entrnce.specdeck",
-  ]
+  ]$caveats
 end
 CASK
