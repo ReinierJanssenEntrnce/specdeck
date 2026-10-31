@@ -1,0 +1,10 @@
+[package]
+name = "specdeck-signalling"
+description = "SpecDeck matchmaking service and TURN credentials"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+specdeck-protocol.workspace = true

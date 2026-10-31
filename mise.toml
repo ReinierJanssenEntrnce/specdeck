@@ -1,0 +1,6 @@
+[tools]
+rust = { version = "1.99.1", components = "clippy,rustfmt" }
+node = "24.22.2"
+pnpm = "12.16.1"
+just = "1.59"
+cmake = "4.4.5"

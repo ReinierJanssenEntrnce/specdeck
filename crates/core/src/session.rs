@@ -1,0 +1,366 @@
+//! A hosted session: the agent in a pty, its output log, the headless mirror, and (for agents
+//! with an event source) the hook endpoint and timeline.
+//!
+//! Terminal input comes only from the host, through [`HostSession::input`]. Nothing a viewer
+//! sends has a path to the pty.
+
+use std::io::{Read, Write};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, RwLock};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use portable_pty::{ChildKiller, MasterPty, PtySize};
+use specdeck_protocol::timeline::{Entry, TimelineEvent};
+use specdeck_protocol::{AgentId, AgentStatus};
+use tempfile::NamedTempFile;
+use tokio::sync::mpsc;
+
+use crate::activity::{Activity, Change};
+use crate::environment::Environment;
+use crate::hooks::{self, HookEndpoint, HookPayload};
+use crate::launcher::{self, LaunchError, LaunchOptions};
+use crate::mirror::{Colors, Mirror, Responder};
+use crate::output_log::{Batcher, OutputLog};
+use crate::timeline::{TimelineBuilder, stamp};
+
+#[derive(Clone, Debug)]
+pub struct HostConfig {
+    pub agent: AgentId,
+    pub folder: PathBuf,
+    pub cols: u16,
+    pub rows: u16,
+    /// Where the output log and hook settings live while the session runs.
+    pub data_dir: PathBuf,
+}
+
+/// Something participants need to hear about.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SessionEvent {
+    /// New records in the output log; read them from the log.
+    Output,
+    Status(AgentStatus),
+    /// A new timeline entry, also kept in [`HostSession::timeline`].
+    Timeline(TimelineEvent),
+    Resized {
+        cols: u16,
+        rows: u16,
+    },
+    /// The agent process exited; the session stays open until the host closes it.
+    Exited {
+        code: u32,
+    },
+}
+
+enum Command {
+    Output(Vec<u8>),
+    OutputClosed,
+    Resize { cols: u16, rows: u16 },
+    HostWindow(bool),
+    Colors(Colors),
+    Hook(HookPayload),
+    Exited { code: u32 },
+    Close,
+}
+
+pub struct HostSession {
+    agent: AgentId,
+    log: Arc<OutputLog>,
+    timeline: Arc<RwLock<Vec<TimelineEvent>>>,
+    status: Arc<Mutex<AgentStatus>>,
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    commands: mpsc::UnboundedSender<Command>,
+    killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    host_entered: Arc<Mutex<Option<Instant>>>,
+    _hooks: Option<(HookEndpoint, NamedTempFile)>,
+}
+
+impl HostSession {
+    /// Starts the agent. Must run inside a Tokio runtime.
+    pub async fn start(
+        config: HostConfig,
+        env: &Environment,
+    ) -> Result<(Self, mpsc::UnboundedReceiver<SessionEvent>), LaunchError> {
+        let (commands, command_rx) = mpsc::unbounded_channel();
+        let io_error = |e: std::io::Error| LaunchError::Pty(e.to_string());
+
+        // Claude Code reports its events through HTTP hooks registered with an extra settings file.
+        let mut options = LaunchOptions {
+            agent: config.agent,
+            folder: config.folder.clone(),
+            cols: config.cols,
+            rows: config.rows,
+            extra_args: Vec::new(),
+            extra_env: Vec::new(),
+        };
+        let hooks = if config.agent.has_timeline() {
+            std::fs::create_dir_all(&config.data_dir).map_err(io_error)?;
+            let sender = commands.clone();
+            let endpoint = HookEndpoint::start(move |payload| {
+                let _ = sender.send(Command::Hook(payload));
+            })
+            .await
+            .map_err(io_error)?;
+            let settings =
+                hooks::write_hook_settings(&config.data_dir, &endpoint.url).map_err(io_error)?;
+            (options.extra_args, options.extra_env) = endpoint.launch_additions(settings.path());
+            Some((endpoint, settings))
+        } else {
+            None
+        };
+
+        let process = launcher::launch(&options, env)?;
+        let log = Arc::new(OutputLog::create(&config.data_dir).map_err(io_error)?);
+        let killer = process.child.clone_killer();
+        spawn_reader(process.reader, commands.clone());
+        spawn_exit_watcher(process.child, commands.clone());
+
+        let (events, event_rx) = mpsc::unbounded_channel();
+        let session = Self {
+            agent: config.agent,
+            log: log.clone(),
+            timeline: Arc::default(),
+            status: Arc::new(Mutex::new(Activity::new(config.agent).status())),
+            writer: Arc::new(Mutex::new(process.writer)),
+            commands: commands.clone(),
+            killer: Mutex::new(killer),
+            host_entered: Arc::default(),
+            _hooks: hooks,
+        };
+        let pump = Pump {
+            log,
+            master: process.master,
+            mirror: Mirror::new(config.cols, config.rows),
+            batcher: Batcher::default(),
+            responder: Responder::Mirror,
+            writer: session.writer.clone(),
+            activity: Activity::new(config.agent),
+            builder: TimelineBuilder::new(config.folder.to_string_lossy()),
+            timeline: session.timeline.clone(),
+            status: session.status.clone(),
+            host_entered: session.host_entered.clone(),
+            events,
+        };
+        pump.emit_entry(pump.builder.session_started());
+        tokio::spawn(pump.run(command_rx));
+        Ok((session, event_rx))
+    }
+
+    pub fn agent(&self) -> AgentId {
+        self.agent
+    }
+
+    /// The session's terminal history.
+    pub fn log(&self) -> &Arc<OutputLog> {
+        &self.log
+    }
+
+    /// Every timeline entry so far, in order.
+    pub fn timeline(&self) -> Vec<TimelineEvent> {
+        self.timeline.read().unwrap().clone()
+    }
+
+    pub fn status(&self) -> AgentStatus {
+        *self.status.lock().unwrap()
+    }
+
+    /// Terminal input from the host. The only way input reaches the agent.
+    pub fn input(&self, bytes: &[u8]) -> std::io::Result<()> {
+        if bytes.contains(&b'\r') {
+            self.host_entered.lock().unwrap().get_or_insert(Instant::now());
+        }
+        let mut writer = self.writer.lock().unwrap();
+        writer.write_all(bytes)?;
+        writer.flush()
+    }
+
+    /// The host resized their terminal; viewers follow.
+    pub fn resize(&self, cols: u16, rows: u16) {
+        let _ = self.commands.send(Command::Resize { cols, rows });
+    }
+
+    /// Whether the host's window is attached, and so answers terminal queries itself.
+    pub fn set_host_window(&self, attached: bool) {
+        let _ = self.commands.send(Command::HostWindow(attached));
+    }
+
+    /// The colours the host's terminal uses, reported to the agent when no window is attached.
+    pub fn set_colors(&self, colors: Colors) {
+        let _ = self.commands.send(Command::Colors(colors));
+    }
+
+    /// Ends the agent and the session. The output log and hook settings are deleted.
+    pub fn close(self) {
+        let _ = self.killer.lock().unwrap().kill();
+        let _ = self.commands.send(Command::Close);
+    }
+}
+
+/// Owns the terminal state and turns everything that happens into log records and events.
+struct Pump {
+    log: Arc<OutputLog>,
+    master: Box<dyn MasterPty + Send>,
+    mirror: Mirror,
+    batcher: Batcher,
+    responder: Responder,
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    activity: Activity,
+    builder: TimelineBuilder,
+    timeline: Arc<RwLock<Vec<TimelineEvent>>>,
+    status: Arc<Mutex<AgentStatus>>,
+    host_entered: Arc<Mutex<Option<Instant>>>,
+    events: mpsc::UnboundedSender<SessionEvent>,
+}
+
+impl Pump {
+    async fn run(mut self, mut commands: mpsc::UnboundedReceiver<Command>) {
+        let mut tick = tokio::time::interval(Duration::from_millis(250));
+        loop {
+            let flush_at = self.batcher.deadline();
+            let command = tokio::select! {
+                command = commands.recv() => command,
+                _ = sleep_until(flush_at) => {
+                    if let Some(batch) = self.batcher.poll(Instant::now()) {
+                        self.append_output(&batch);
+                    }
+                    continue;
+                }
+                _ = tick.tick() => {
+                    if let Some(at) = self.host_entered.lock().unwrap().take() {
+                        self.activity.on_host_enter(at);
+                    }
+                    let changes = self.activity.poll(Instant::now());
+                    self.apply(changes);
+                    continue;
+                }
+            };
+            match command {
+                Some(Command::Output(bytes)) => {
+                    if let Some(reply) = self.responder.filter(self.mirror.feed(&bytes)) {
+                        let _ = self.writer.lock().unwrap().write_all(&reply);
+                    }
+                    if let Some(batch) = self.batcher.push(&bytes, Instant::now()) {
+                        self.append_output(&batch);
+                    }
+                    let changes = self.activity.on_output();
+                    self.apply(changes);
+                }
+                Some(Command::OutputClosed) => self.flush(),
+                Some(Command::Resize { cols, rows }) => {
+                    // Output before the resize must come before it in the log.
+                    self.flush();
+                    let size = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
+                    let _ = self.master.resize(size);
+                    self.mirror.resize(cols, rows);
+                    if self.log.append_resize(cols, rows).is_ok() {
+                        let _ = self.events.send(SessionEvent::Resized { cols, rows });
+                    }
+                }
+                Some(Command::HostWindow(attached)) => {
+                    self.responder =
+                        if attached { Responder::HostWindow } else { Responder::Mirror };
+                }
+                Some(Command::Colors(colors)) => self.mirror.set_colors(colors),
+                Some(Command::Hook(payload)) => {
+                    // Entries link to the output before them, so append any pending batch first.
+                    self.flush();
+                    self.handle_hook(payload);
+                }
+                Some(Command::Exited { code }) => {
+                    self.flush();
+                    let changes = self.activity.on_exit();
+                    self.apply(changes);
+                    let _ = self.events.send(SessionEvent::Exited { code });
+                }
+                Some(Command::Close) | None => break,
+            }
+        }
+    }
+
+    fn handle_hook(&mut self, payload: HookPayload) {
+        match self.builder.handle(payload) {
+            Ok(entries) => {
+                let changes = self.activity.on_entries(&entries);
+                // Show the timeline as available again before the entries that restored it.
+                self.apply(changes);
+                for entry in entries {
+                    self.emit_entry(entry);
+                }
+            }
+            Err(error) => {
+                let changes = self.activity.on_bad_payload(error.to_string());
+                self.apply(changes);
+            }
+        }
+    }
+
+    fn flush(&mut self) {
+        let batch = self.batcher.take();
+        if !batch.is_empty() {
+            self.append_output(&batch);
+        }
+    }
+
+    fn append_output(&mut self, batch: &[u8]) {
+        if self.log.append_output(batch).is_ok() {
+            let _ = self.events.send(SessionEvent::Output);
+        }
+    }
+
+    fn apply(&self, changes: Vec<Change>) {
+        for change in changes {
+            match change {
+                Change::Status(status) => {
+                    *self.status.lock().unwrap() = status;
+                    let _ = self.events.send(SessionEvent::Status(status));
+                }
+                Change::Timeline(entry) => self.emit_entry(entry),
+            }
+        }
+    }
+
+    fn emit_entry(&self, entry: Entry) {
+        let at = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+        let event = stamp(entry, self.log.latest(), at);
+        self.timeline.write().unwrap().push(event.clone());
+        let _ = self.events.send(SessionEvent::Timeline(event));
+    }
+}
+
+async fn sleep_until(deadline: Option<Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
+        None => std::future::pending().await,
+    }
+}
+
+/// Reads the pty on a blocking thread.
+fn spawn_reader(mut reader: Box<dyn Read + Send>, commands: mpsc::UnboundedSender<Command>) {
+    thread::spawn(move || {
+        let mut buf = [0; 16 * 1024];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if commands.send(Command::Output(buf[..n].to_vec())).is_err() {
+                        return;
+                    }
+                }
+            }
+        }
+        let _ = commands.send(Command::OutputClosed);
+    });
+}
+
+/// Waits for the agent to exit on a blocking thread.
+fn spawn_exit_watcher(
+    mut child: Box<dyn portable_pty::Child + Send + Sync>,
+    commands: mpsc::UnboundedSender<Command>,
+) {
+    thread::spawn(move || {
+        let code = child.wait().map_or(1, |status| status.exit_code());
+        // Give the reader a moment to deliver the last output before the exit.
+        thread::sleep(Duration::from_millis(50));
+        let _ = commands.send(Command::Exited { code });
+    });
+}

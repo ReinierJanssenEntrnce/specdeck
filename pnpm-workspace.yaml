@@ -1,0 +1,7 @@
+packages:
+  - app/ui
+# Skip versions published less than a day ago (in minutes), so a compromised release has time to be
+# pulled. Set here so every machine resolves the same way CI does.
+minimumReleaseAge: 1440
+allowBuilds:
+  esbuild: true

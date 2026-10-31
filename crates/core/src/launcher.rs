@@ -1,0 +1,193 @@
+//! Starts an agent in a pseudo-terminal in the host's chosen folder.
+
+use std::ffi::OsString;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use specdeck_protocol::AgentId;
+
+use crate::agent::{self, Prerequisite};
+use crate::environment::Environment;
+
+#[derive(Debug, thiserror::Error)]
+pub enum LaunchError {
+    #[error("{} is not installed. Install it and log in, then start the session again.", .0.display_name())]
+    NotInstalled(AgentId),
+    #[error("{} needs {}, which was not found.", .agent.display_name(), .prerequisite.display_name())]
+    MissingPrerequisite { agent: AgentId, prerequisite: Prerequisite },
+    #[error("The folder {0} does not exist.")]
+    FolderMissing(PathBuf),
+    #[error("Could not start a terminal: {0}")]
+    Pty(String),
+}
+
+/// What to start and where.
+#[derive(Clone, Debug)]
+pub struct LaunchOptions {
+    pub agent: AgentId,
+    pub folder: PathBuf,
+    pub cols: u16,
+    pub rows: u16,
+    /// Arguments added by the agent's adapter, for example Claude Code's hook settings.
+    pub extra_args: Vec<OsString>,
+    /// Variables added to the environment, for example the hook token.
+    pub extra_env: Vec<(OsString, OsString)>,
+}
+
+/// A running agent in a pseudo-terminal.
+pub struct AgentProcess {
+    pub master: Box<dyn MasterPty + Send>,
+    pub child: Box<dyn Child + Send + Sync>,
+    /// Terminal output of the agent.
+    pub reader: Box<dyn Read + Send>,
+    /// Terminal input to the agent.
+    pub writer: Box<dyn Write + Send>,
+}
+
+/// Checks the agent can start, then starts it in a pty.
+pub fn launch(options: &LaunchOptions, env: &Environment) -> Result<AgentProcess, LaunchError> {
+    let executable = env
+        .find_executable(agent::executable_name(options.agent))
+        .ok_or(LaunchError::NotInstalled(options.agent))?;
+    if let Some(prerequisite) = agent::missing_prerequisite(options.agent, env) {
+        return Err(LaunchError::MissingPrerequisite { agent: options.agent, prerequisite });
+    }
+    if !options.folder.is_dir() {
+        return Err(LaunchError::FolderMissing(options.folder.clone()));
+    }
+
+    let pty = native_pty_system()
+        .openpty(PtySize {
+            rows: options.rows,
+            cols: options.cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|e| LaunchError::Pty(e.to_string()))?;
+
+    let mut command = command_for(&executable);
+    command.args(&options.extra_args);
+    command.cwd(&options.folder);
+    command.env_clear();
+    for (name, value) in env.iter() {
+        command.env(name, value);
+    }
+    command.env("TERM", "xterm-256color");
+    command.env("COLORTERM", "truecolor");
+    for (name, value) in &options.extra_env {
+        command.env(name, value);
+    }
+
+    let child = pty.slave.spawn_command(command).map_err(|e| LaunchError::Pty(e.to_string()))?;
+    // The child holds its own handle to the slave side; keeping ours would hide its exit.
+    drop(pty.slave);
+    let reader = pty.master.try_clone_reader().map_err(|e| LaunchError::Pty(e.to_string()))?;
+    let writer = pty.master.take_writer().map_err(|e| LaunchError::Pty(e.to_string()))?;
+    Ok(AgentProcess { master: pty.master, child, reader, writer })
+}
+
+/// Batch files (npm installs `claude.cmd` on Windows) cannot be started directly in ConPTY.
+fn command_for(executable: &Path) -> CommandBuilder {
+    let is_batch = executable
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("cmd") || ext.eq_ignore_ascii_case("bat"));
+    if cfg!(windows) && is_batch {
+        let mut command = CommandBuilder::new("cmd.exe");
+        command.args([OsString::from("/d"), OsString::from("/c"), executable.into()]);
+        command
+    } else {
+        CommandBuilder::new(executable)
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    use super::*;
+    use crate::test_support::fake_executable;
+
+    fn options(agent: AgentId, folder: &Path) -> LaunchOptions {
+        LaunchOptions {
+            agent,
+            folder: folder.to_owned(),
+            cols: 80,
+            rows: 24,
+            extra_args: vec!["--flag".into()],
+            extra_env: vec![("SPECDECK_TEST".into(), "yes".into())],
+        }
+    }
+
+    fn read_until(reader: &mut dyn Read, needle: &str) -> String {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut output = Vec::new();
+        let mut buf = [0; 1024];
+        while Instant::now() < deadline {
+            let n = reader.read(&mut buf).unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            output.extend_from_slice(&buf[..n]);
+            if String::from_utf8_lossy(&output).contains(needle) {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&output).into_owned()
+    }
+
+    #[test]
+    fn starts_the_agent_in_the_folder_with_args_and_env() {
+        let bin = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        fake_executable(
+            bin.path(),
+            "opencode",
+            r#"echo "cwd=$(pwd) args=$* test=$SPECDECK_TEST term=$TERM end""#,
+        );
+        let env: Environment = [("PATH", bin.path())].into_iter().collect();
+
+        let mut process = launch(&options(AgentId::OpenCode, folder.path()), &env).unwrap();
+        let output = read_until(&mut process.reader, "end");
+
+        let folder = folder.path().canonicalize().unwrap();
+        assert!(output.contains(&format!("cwd={}", folder.display())), "{output}");
+        assert!(output.contains("args=--flag"), "{output}");
+        assert!(output.contains("test=yes"), "{output}");
+        assert!(output.contains("term=xterm-256color"), "{output}");
+        assert!(process.child.wait().unwrap().success());
+    }
+
+    #[test]
+    fn host_input_reaches_the_agent() {
+        let bin = tempfile::tempdir().unwrap();
+        fake_executable(bin.path(), "omp", r#"read line; echo "got:$line""#);
+        let env: Environment = [("PATH", bin.path())].into_iter().collect();
+
+        let mut process = launch(&options(AgentId::Omp, bin.path()), &env).unwrap();
+        process.writer.write_all(b"hello\r").unwrap();
+        assert!(read_until(&mut process.reader, "got:hello").contains("got:hello"));
+    }
+
+    #[test]
+    fn agent_not_installed() {
+        let bin = tempfile::tempdir().unwrap();
+        let env: Environment = [("PATH", bin.path())].into_iter().collect();
+        let error = launch(&options(AgentId::ClaudeCode, bin.path()), &env).err().unwrap();
+        assert!(matches!(error, LaunchError::NotInstalled(AgentId::ClaudeCode)));
+        assert_eq!(
+            error.to_string(),
+            "Claude Code is not installed. Install it and log in, then start the session again."
+        );
+    }
+
+    #[test]
+    fn folder_missing() {
+        let bin = tempfile::tempdir().unwrap();
+        fake_executable(bin.path(), "claude", "exit 0");
+        let env: Environment = [("PATH", bin.path())].into_iter().collect();
+        let error =
+            launch(&options(AgentId::ClaudeCode, &bin.path().join("gone")), &env).err().unwrap();
+        assert!(matches!(error, LaunchError::FolderMissing(_)));
+    }
+}
