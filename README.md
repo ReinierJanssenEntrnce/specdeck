@@ -6,6 +6,18 @@ This is SpecDeck 1.x, a native rewrite of the Electron app (0.x, in `../claude-s
 
 How to use the app: [docs/user-guide.md](docs/user-guide.md). Status: in development. What is being built is in [`openspec/changes/native-shared-session-mvp`](openspec/changes/native-shared-session-mvp) (proposal, specs, design and tasks).
 
+## Install
+
+| Platform | How |
+|---|---|
+| macOS (Apple silicon, Intel) | `brew install --cask nickhartjes/tap/specdeck`, or the `.dmg` from [Releases](https://github.com/nickhartjes/specdeck/releases) |
+| Windows | `SpecDeck-x64-setup.exe` from [Releases](https://github.com/nickhartjes/specdeck/releases) |
+| Linux | `nix run github:nickhartjes/specdeck` (builds from source, x86_64 and aarch64), or the AppImage or `.deb` from [Releases](https://github.com/nickhartjes/specdeck/releases) |
+
+With Nix, add it to a system or home configuration through the flake's `packages.<system>.specdeck` or `overlays.default`. Builds from source use the sharing service set at build time; override it with `specdeck.override { signallingUrl = "wss://…/signal"; }`, or set `SPECDECK_SIGNALLING_URL` when starting the app.
+
+SpecDeck 1.x replaces 0.x under the same names: `brew upgrade` and flake updates move 0.x installs to 1.x, which cannot join 0.x sessions, so a team switches together.
+
 ## Repository layout
 
 | Path | Contents |
@@ -54,6 +66,11 @@ aws codeartifact login --tool npm --repository npm-store --domain entrnce --doma
 ## CI
 
 [`ci.yml`](.github/workflows/ci.yml) runs `just check` and `just package` on macOS, Windows and Ubuntu, and fails when an installer is larger than 25 MB ([`scripts/check-installer-size.sh`](scripts/check-installer-size.sh)).
+It also builds the Nix flake.
+
+## Releases
+
+Push a tag that matches the version in `Cargo.toml` and `app/src-tauri/tauri.conf.json`, for example `v1.0.0`. [`release.yml`](.github/workflows/release.yml) builds the installers on each platform, uploads them to a GitHub release under stable names (`SpecDeck-arm64.dmg`, `SpecDeck-x64.dmg`, `SpecDeck-x64-setup.exe`, `SpecDeck-x86_64.AppImage`, `SpecDeck-amd64.deb`), publishes it, and has [`homebrew.yml`](.github/workflows/homebrew.yml) update the cask in `nickhartjes/homebrew-tap` ([`scripts/render-cask.sh`](scripts/render-cask.sh)). The Nix flake follows the repository, so it needs nothing per release. The secrets for the sharing service URL, signing and the tap are listed at the top of `release.yml`; without them the installers are unsigned (ad-hoc on macOS) and the cask is not updated.
 
 ## License
 

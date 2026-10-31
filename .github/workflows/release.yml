@@ -1,0 +1,182 @@
+# Release builds, started by pushing a tag like v1.0.0 that matches the app version
+# (Cargo.toml workspace version and app/src-tauri/tauri.conf.json). Design decision 13.
+#
+# The installers are uploaded to a draft GitHub release under stable names, which the Homebrew
+# cask and the user guide use; the draft is published once every platform has uploaded. Tags
+# with a suffix (v1.1.0-rc.1) are published as prereleases.
+#
+# Repository secrets (signing and notarization are skipped while they are missing):
+#   SPECDECK_SIGNALLING_URL   the team's sharing service, baked into the app
+#   APPLE_CERTIFICATE (base64 .p12, Developer ID Application), APPLE_CERTIFICATE_PASSWORD,
+#   APPLE_SIGNING_IDENTITY    signing on macOS (without them the app is ad-hoc signed)
+#   APPLE_API_KEY (base64 .p8), APPLE_API_KEY_ID, APPLE_API_ISSUER   notarization
+#   WINDOWS_CERTIFICATE (base64 .pfx), WINDOWS_CERTIFICATE_PASSWORD   signing on Windows
+#   HOMEBREW_TAP_DEPLOY_KEY   write access to nickhartjes/homebrew-tap (see homebrew.yml)
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The release notes list the commits since the previous release tag.
+          fetch-depth: 0
+      - name: Check the tag matches the app version
+        run: |
+          cargo_version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          tauri_version=$(jq -r .version app/src-tauri/tauri.conf.json)
+          if [ "v$cargo_version" != "$GITHUB_REF_NAME" ] || [ "v$tauri_version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match Cargo.toml ($cargo_version) and tauri.conf.json ($tauri_version)"
+            exit 1
+          fi
+      - name: Create the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/release-notes.sh "$GITHUB_REF_NAME" > release-notes.md
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$GITHUB_REF_NAME" --notes-file release-notes.md
+
+  package:
+    name: Release (${{ matrix.name }})
+    needs: draft
+    strategy:
+      # One platform failing should not hide whether the others build.
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS arm64, os: macos-latest, bundles: dmg, rename: 'dmg/*.dmg=SpecDeck-arm64.dmg' }
+          # Built natively on Intel: cross-compiling the vendored OpenSSL and libdatachannel is fragile.
+          - { name: macOS x64, os: macos-15-intel, bundles: dmg, rename: 'dmg/*.dmg=SpecDeck-x64.dmg' }
+          - { name: Windows, os: windows-latest, bundles: nsis, rename: 'nsis/*.exe=SpecDeck-x64-setup.exe' }
+          # The oldest supported Ubuntu, so the AppImage runs on older distributions too.
+          - { name: Linux, os: ubuntu-22.04, bundles: 'appimage,deb', rename: 'appimage/*.AppImage=SpecDeck-x86_64.AppImage deb/*.deb=SpecDeck-amd64.deb' }
+    runs-on: ${{ matrix.os }}
+    env:
+      SPECDECK_SIGNALLING_URL: ${{ secrets.SPECDECK_SIGNALLING_URL }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Linux packages for Tauri
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      # Tools pinned in mise.toml: Rust, Node, pnpm, just, cmake.
+      - uses: jdx/mise-action@v3
+      - uses: Swatinem/rust-cache@v2
+      - run: just install
+
+      - name: Set up signing on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          # Tauri signs when these are set; otherwise the bundle keeps its ad-hoc signature.
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            {
+              echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE"
+              echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+              echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::APPLE_CERTIFICATE is not set; the macOS app is not signed with a Developer ID."
+          fi
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_API_KEY_ID" ]; then
+            echo "$APPLE_API_KEY" | base64 --decode > "$RUNNER_TEMP/apple-api-key.p8"
+            {
+              echo "APPLE_API_KEY=$APPLE_API_KEY_ID"
+              echo "APPLE_API_ISSUER=$APPLE_API_ISSUER"
+              echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/apple-api-key.p8"
+            } >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up signing on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE) {
+            Write-Output "::warning::WINDOWS_CERTIFICATE is not set; the Windows installer is not signed."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'certificate.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          $config = @{ bundle = @{ windows = @{ certificateThumbprint = $cert.Thumbprint; digestAlgorithm = 'sha256'; timestampUrl = 'http://timestamp.digicert.com' } } } | ConvertTo-Json -Compress -Depth 4
+          Add-Content $env:GITHUB_ENV "TAURI_SIGNING_CONFIG=$config"
+
+      - name: Build the installers
+        shell: bash
+        run: |
+          if [ -n "${TAURI_SIGNING_CONFIG:-}" ]; then
+            pnpm tauri build --bundles ${{ matrix.bundles }} --config "$TAURI_SIGNING_CONFIG"
+          else
+            pnpm tauri build --bundles ${{ matrix.bundles }}
+          fi
+
+      - name: Check installer size
+        shell: bash
+        run: scripts/check-installer-size.sh 25 target/release/bundle
+
+      - name: Upload to the draft under stable names
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          for pair in ${{ matrix.rename }}; do
+            pattern=${pair%%=*}
+            name=${pair#*=}
+            # shellcheck disable=SC2086
+            set -- target/release/bundle/$pattern
+            if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+              echo "::error::Expected one file for $pattern, found: $*"
+              exit 1
+            fi
+            cp "$1" "upload/$name"
+          done
+          gh release upload "$GITHUB_REF_NAME" upload/* --clobber
+
+  publish:
+    name: Publish release
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          prerelease=false
+          case "$GITHUB_REF_NAME" in *-*) prerelease=true ;; esac
+          gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease="$prerelease"
+
+  homebrew:
+    name: Update Homebrew cask
+    needs: publish
+    # Prereleases do not go to Homebrew.
+    if: ${{ !contains(github.ref_name, '-') }}
+    uses: ./.github/workflows/homebrew.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
