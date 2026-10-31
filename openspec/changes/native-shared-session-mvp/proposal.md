@@ -13,7 +13,8 @@ SpecDeck today (the Electron app in `../claude-share`, version 0.x) lets a host 
 - New Rust signalling service (matchmaking and TURN credentials), deployed with coturn.
 - New wire protocol, designed for this app. **BREAKING**: native SpecDeck 1.x and Electron SpecDeck 0.x cannot join each other's sessions, and 0.x recordings cannot be opened.
 - Native platform integration: system menus and shortcuts, tray/menu-bar presence while hosting, OS notifications, native dialogs, appearance that follows the OS, `specdeck://` join links, and footprint targets.
-- MVP scope only. Not in this change (later changes): session recording and replay, chat/terminal interface modes, display scaling, custom theming beyond following the OS, auto-updates, distribution channels (Homebrew, Nix, signed installers).
+- Distribution as with 0.x, taking over its names: a tag builds the installers into GitHub Releases of `nickhartjes/specdeck`, the Homebrew cask `specdeck` in `nickhartjes/homebrew-tap` follows each release, and a Nix flake builds SpecDeck from source on Linux. Installers are signed when certificates are configured.
+- MVP scope only. Not in this change (later changes): session recording and replay, chat/terminal interface modes, display scaling, custom theming beyond following the OS, auto-updates, buying and setting up signing certificates.
 
 ## Capabilities
 
@@ -24,7 +25,7 @@ SpecDeck today (the Electron app in `../claude-share`, version 0.x) lets a host 
 - `session-streaming`: Delivering the host's terminal to viewers as an exact, live, read-only mirror, including late join, reconnect, capacity and stream authenticity.
 - `session-timeline`: Turning Claude Code hook events into a timeline of prompts, responses, tool calls and file diffs, linked to terminal positions, with a degraded mode, and the session's token usage and context fill.
 - `viewer-experience`: Reading a shared session at one's own pace: follow and free-scroll, search, copy, jump to prompt, read-only interface, session status.
-- `native-experience`: How the app behaves as a native desktop app on each platform: menus and shortcuts, tray/menu-bar, notifications, appearance, single instance and deep links, and resource footprint.
+- `native-experience`: How the app behaves as a native desktop app on each platform: menus and shortcuts, tray/menu-bar, notifications, appearance, single instance and deep links, resource footprint, and installing through Homebrew and Nix.
 
 ### Modified Capabilities
 
@@ -35,5 +36,5 @@ None. This repository has no specs yet.
 - New code in this repository: a Cargo workspace (session engine, protocol, signalling) and a Tauri app with a TypeScript web UI.
 - Dependencies: Tauri 2, `portable-pty`, `alacritty_terminal`, libdatachannel (via the `datachannel` crate), `ed25519-dalek`, `axum`/`tokio`, xterm.js in the UI.
 - Infrastructure: a signalling service and coturn in the team's Kubernetes cluster, separate from the 0.x deployment.
-- The Electron SpecDeck code in `../claude-share` is not changed. Teams must move to 1.x together, because 0.x and 1.x do not interoperate, and 0.x installs cannot update themselves to 1.x.
+- The Electron SpecDeck code in `../claude-share` is not changed. Teams must move to 1.x together, because 0.x and 1.x do not interoperate, and 0.x installs cannot update themselves to 1.x. Because 1.x takes over the 0.x Homebrew cask and flake, `brew upgrade` and flake updates move 0.x users to 1.x.
 - Requires on the host: at least one supported agent installed and logged in; for Claude Code on Windows also Git Bash (as with 0.x).

@@ -116,3 +116,19 @@ The app SHALL stay small and quick: an installer of at most 25 MB per platform, 
 #### Scenario: Installer size
 - **WHEN** a release is built for any platform
 - **THEN** each installer is at most 25 MB
+
+### Requirement: Install through Homebrew and Nix
+Each release SHALL be installable on macOS with Homebrew (`brew install --cask nickhartjes/tap/specdeck`) and on Linux with Nix from the project's flake, which builds SpecDeck from source. Both SHALL follow new releases without manual edits.
+
+#### Scenario: Homebrew on macOS
+- **WHEN** a user on an Apple silicon or Intel Mac runs `brew install --cask nickhartjes/tap/specdeck`
+- **THEN** SpecDeck for their processor is installed in Applications, and `brew upgrade` installs later releases
+
+#### Scenario: Nix on Linux
+- **WHEN** a user on x86_64 or aarch64 Linux runs `nix run github:nickhartjes/specdeck`
+- **THEN** Nix builds SpecDeck from source and starts it, and it opens `specdeck://` join links once installed in their profile
+
+#### Scenario: New release
+- **WHEN** a release tag is pushed and its installers are published
+- **THEN** the Homebrew cask points at the new version, and the flake builds the tagged source
+

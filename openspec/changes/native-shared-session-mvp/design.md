@@ -185,6 +185,15 @@ Reference machines: Apple M1 with 8 GB (macOS 15), an x64 laptop with 8 GB (Wind
 - [coturn refuses a new allocation from an address it still holds one for (437), for example after a quick restart; libjuice does not retry] → The engine recreates the peer connection, and with it its socket, when no relay candidate arrives.
 - [Invite code brute force] → 60-bit codes, signalling rate limits, codes valid only while the session is open.
 
+### 13. Releases, Homebrew and Nix
+
+As in 0.x, and under its names, so 1.x replaces it everywhere:
+
+- **Release workflow** (`.github/workflows/release.yml`): a tag `v1.2.3` that matches the app version creates a draft GitHub release; a matrix builds the macOS `.dmg` for arm64 and x64, the Windows NSIS `.exe`, and the Linux AppImage and `.deb`, uploaded under stable names (`SpecDeck-arm64.dmg`, `SpecDeck-x64.dmg`, `SpecDeck-x64-setup.exe`, `SpecDeck-x86_64.AppImage`, `SpecDeck-amd64.deb`); the release is published once all have uploaded. Builds are signed (and on macOS notarized) only when the certificate secrets exist, otherwise ad-hoc on macOS. The signalling URL comes from a secret at build time.
+- **Homebrew**: after publishing, a job rewrites `Casks/specdeck.rb` in `nickhartjes/homebrew-tap` with the new version and both `.dmg` checksums (deploy key secret; skipped while missing). The cask's `zap` lists 1.x's own folders (`com.entrnce.specdeck` under Application Support and Caches).
+- **Nix**: `flake.nix` builds from source for `x86_64-linux` and `aarch64-linux`: the UI with pnpm (`pnpm.fetchDeps`, hash in the flake), the app with `rustPlatform.buildRustPackage` (`cargoLock` from `Cargo.lock`), linked against WebKitGTK 4.1, libsoup 3, GTK 3 and libayatana-appindicator, with CMake for the vendored libdatachannel. It installs the `.desktop` file with the `x-scheme-handler/specdeck` MIME type, and the icons. The flake follows the repository, so a release needs no extra commit; a check in CI builds it so a dependency change that breaks the Nix build is noticed. macOS users use Homebrew.
+- Not in this change: auto-updates inside the app, and buying the Apple and Windows signing certificates.
+
 ## Migration Plan
 
 1. Deploy the new signalling service and coturn to a separate namespace; 0.x keeps its own deployment.
