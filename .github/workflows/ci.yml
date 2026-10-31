@@ -41,7 +41,7 @@ jobs:
 
       - name: Check installer size
         shell: bash
-        run: scripts/check-installer-size.sh 25 target/release/bundle
+        run: scripts/check-installer-size.sh 25 100 target/release/bundle
 
       - uses: actions/upload-artifact@v5
         with:

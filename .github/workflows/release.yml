@@ -138,7 +138,7 @@ jobs:
 
       - name: Check installer size
         shell: bash
-        run: scripts/check-installer-size.sh 25 target/release/bundle
+        run: scripts/check-installer-size.sh 25 100 target/release/bundle
 
       - name: Upload to the draft under stable names
         shell: bash
