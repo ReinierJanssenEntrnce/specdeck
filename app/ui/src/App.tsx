@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { errorMessage, useBridge } from './api/bridge';
-import type { Profile } from './api/types';
+import type { Profile, View } from './api/types';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { dispatchMenu, useMenu, type MenuCommand } from './menu/menu';
@@ -23,6 +23,7 @@ export function App() {
   const [leaveFor, setLeaveFor] = useState<MenuCommand | null>(null);
   const [shortcuts, setShortcuts] = useState(false);
 
+  const setView = (view: View) => void bridge.setView(view).then(setProfile);
   const refresh = () =>
     bridge.getProfile().then((p) => {
       setProfile(p);
@@ -93,11 +94,15 @@ export function App() {
 
   return (
     <>
-      {screen.kind === 'host' && <HostScreen onEnded={() => refresh().then(() => setScreen({ kind: 'start' }))} />}
+      {screen.kind === 'host' && (
+        <HostScreen view={profile.view} onView={setView} onEnded={() => refresh().then(() => setScreen({ kind: 'start' }))} />
+      )}
       {screen.kind === 'viewer' && (
         <ViewerScreen
           key={screen.code}
           code={screen.code}
+          view={profile.view}
+          onView={setView}
           onLeave={(retry) => setScreen(retry ? { kind: 'start', code: retry.code, joinError: retry.message } : { kind: 'start' })}
         />
       )}

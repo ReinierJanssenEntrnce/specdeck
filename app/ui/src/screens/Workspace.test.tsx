@@ -1,9 +1,10 @@
+import { createRef } from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { demoParticipants, demoTimeline } from '../api/demo';
 import { terminal, TerminalViewStub } from '../test/terminal-stub';
-import { Workspace } from './Workspace';
+import { Workspace, type WorkspaceHandle } from './Workspace';
 
 vi.mock('../terminal/TerminalView', () => ({ TerminalView: TerminalViewStub }));
 
@@ -71,6 +72,23 @@ describe('timeline panel', () => {
       timeline: [...demoTimeline, { outputSeq: 99, at: 0, kind: 'timeline-unavailable', reason: 'No events arrived from the agent.' }],
     });
     expect(screen.getByText(/Timeline paused: No events arrived from the agent./)).toBeInTheDocument();
+  });
+});
+
+describe('hidden terminal', () => {
+  it('keeps receiving output while hidden and comes back without a remount', () => {
+    const ref = createRef<WorkspaceHandle>();
+    const { rerender } = render(
+      <Workspace ref={ref} mode="viewer" agentName="Claude Code" timelineSupported timeline={demoTimeline} participants={demoParticipants} terminalHidden />,
+    );
+    const element = screen.getByTestId('terminal');
+    expect(screen.getByLabelText('Terminal, read-only', { selector: 'section' })).toHaveAttribute('aria-hidden', 'true');
+    // "hi" as an output record of the terminal stream, written while hidden.
+    act(() => ref.current!.terminalData(new Uint8Array([1, 0, 0, 0, 2, 104, 105]).buffer));
+    expect(terminal.handle.write).toHaveBeenCalled();
+    rerender(<Workspace ref={ref} mode="viewer" agentName="Claude Code" timelineSupported timeline={demoTimeline} participants={demoParticipants} />);
+    expect(screen.getByTestId('terminal')).toBe(element);
+    expect(screen.getByRole('region', { name: 'Terminal, read-only' })).not.toHaveAttribute('aria-hidden');
   });
 });
 

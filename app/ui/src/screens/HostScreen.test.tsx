@@ -20,7 +20,7 @@ async function setup(overrides: Partial<Bridge> = {}) {
     await base(sink, events);
   });
   const onEnded = vi.fn();
-  renderWith(bridge, <HostScreen onEnded={onEnded} />);
+  renderWith(bridge, <HostScreen view={null} onView={vi.fn()} onEnded={onEnded} />);
   await within(screen.getByRole('banner')).findByText('webshop');
   return { bridge, onEnded };
 }
@@ -127,6 +127,14 @@ describe('host screen', () => {
     act(() => emit({ type: 'exited', code: 0 }));
     expect(screen.getByText(/The shell has exited\. Viewers can still read the session/)).toBeInTheDocument();
     expect(screen.getByText('Shell exited')).toBeInTheDocument();
+  });
+
+  it('never asks the host how to follow, and offers only the step detail', async () => {
+    await setup();
+    expect(screen.queryByRole('dialog', { name: /How do you want to follow/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'View' }));
+    expect(screen.queryByLabelText('Show terminal')).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Details/ })).toBeChecked();
   });
 
   it('says when the agent has exited', async () => {

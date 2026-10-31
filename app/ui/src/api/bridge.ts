@@ -3,7 +3,7 @@
 
 import type { MenuCommand } from '../menu/menu';
 import { createContext, useContext } from 'react';
-import type { AgentId, HostEvent, JoinLink, Profile, ViewEvent } from './types';
+import type { AgentId, HostEvent, JoinLink, Profile, View, ViewEvent } from './types';
 
 /** Receives terminal data as the binary stream described in src/terminal/stream.ts. */
 export type TerminalSink = (data: ArrayBuffer) => void;
@@ -12,6 +12,7 @@ export interface Bridge {
   getProfile(): Promise<Profile>;
   setUsername(username: string): Promise<Profile>;
   setNotifications(enabled: boolean): Promise<Profile>;
+  setView(view: View): Promise<Profile>;
   removeRecentFolder(path: string): Promise<Profile>;
   /** Opens the system folder picker; null when cancelled. */
   chooseFolder(): Promise<string | null>;

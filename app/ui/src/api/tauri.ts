@@ -17,6 +17,7 @@ export const tauriBridge: Bridge = {
   getProfile: () => invoke<Profile>('get_profile'),
   setUsername: (username) => invoke<Profile>('set_username', { username }),
   setNotifications: (enabled) => invoke<Profile>('set_notifications', { enabled }),
+  setView: (view) => invoke<Profile>('set_view', { view }),
   removeRecentFolder: (path) => invoke<Profile>('remove_recent_folder', { path }),
   chooseFolder: async () => {
     const folder = await open({ directory: true, multiple: false, title: 'Choose the folder the agent works in' });

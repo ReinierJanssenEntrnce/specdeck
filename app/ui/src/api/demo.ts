@@ -15,6 +15,7 @@ export const demoProfile: Profile = {
   ],
   lastAgent: 'claude-code',
   notifications: true,
+  view: null,
   translucent: false,
   agents: [
     { id: 'claude-code', name: 'Claude Code', installed: true, hasTimeline: true },
@@ -162,6 +163,7 @@ export function demoBridge(screen: string): Bridge {
     getProfile: async () => profile,
     setUsername: async (username) => ({ ...profile, username }),
     setNotifications: async (notifications) => ({ ...profile, notifications }),
+    setView: async (view) => ({ ...profile, view }),
     removeRecentFolder: async (path) => ({ ...profile, recentFolders: profile.recentFolders.filter((f) => f.path !== path) }),
     chooseFolder: async () => '/Users/nick/projects/webshop',
     startHosting: async () => {},

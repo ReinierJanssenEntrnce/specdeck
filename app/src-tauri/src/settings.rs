@@ -1,5 +1,5 @@
-//! What the app remembers between runs: the user's name, recent folders, last used agent and
-//! whether to show notifications.
+//! What the app remembers between runs: the user's name, recent folders, last used agent,
+//! whether to show notifications and how the user follows sessions.
 //! Stored as JSON in the app's config directory.
 
 use std::path::{Path, PathBuf};
@@ -18,11 +18,36 @@ pub struct Settings {
     pub recent_folders: Vec<PathBuf>,
     pub last_agent: Option<AgentId>,
     pub notifications: bool,
+    /// How the user follows sessions; `None` until they answered the first-join question.
+    pub view: Option<View>,
+}
+
+/// How a participant follows a session (`viewer-views` design decision 4).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct View {
+    /// Whether the terminal is shown; only for viewers, since the host types into it.
+    pub terminal: bool,
+    pub steps: Steps,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Steps {
+    /// What the agent did, in plain words.
+    Summary,
+    /// Tool calls, commands and diffs.
+    Details,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { username: None, recent_folders: Vec::new(), last_agent: None, notifications: true }
+        Self {
+            username: None,
+            recent_folders: Vec::new(),
+            last_agent: None,
+            notifications: true,
+            view: None,
+        }
     }
 }
 
@@ -93,6 +118,24 @@ mod tests {
         assert!(settings.existing_recent().is_empty());
         // Removing from the list does not touch the folder.
         assert!(dir.path().exists());
+    }
+
+    #[test]
+    fn the_view_is_unset_until_chosen_and_then_remembered() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        // Settings saved before views existed still load, with no view chosen.
+        std::fs::write(&path, r#"{"username":"nick","notifications":false}"#).unwrap();
+        assert_eq!(Settings::load(&path).view, None);
+
+        let mut settings = Settings::load(&path);
+        settings.view = Some(View { terminal: false, steps: Steps::Summary });
+        settings.save(&path).unwrap();
+        assert_eq!(Settings::load(&path), settings);
+        assert_eq!(
+            serde_json::to_value(settings.view).unwrap(),
+            serde_json::json!({ "terminal": false, "steps": "summary" })
+        );
     }
 
     #[test]

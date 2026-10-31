@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useReducer, useRef } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, Eye, LogOut, WifiOff } from 'lucide-react';
 import { errorMessage, useBridge } from '../api/bridge';
-import type { AgentId, AgentStatus, EndReason, Participant, TimelineEvent, ViewEvent } from '../api/types';
+import type { AgentId, AgentStatus, EndReason, Participant, TimelineEvent, View, ViewEvent } from '../api/types';
 import { StatusPill } from '../components/StatusPill';
 import { StatusBar } from '../components/StatusBar';
+import { DEVELOPER_VIEW, FirstJoinDialog, ViewMenu } from '../components/ViewMenu';
 import { statusBarInfo } from '../model/statusbar';
 import { formatCode } from '../model/code';
 import { AGENT_NAMES } from './HostScreen';
@@ -77,13 +78,18 @@ export function viewerReducer(state: State, event: ViewEvent): State {
 
 interface Props {
   code: string;
+  /** How this person follows sessions; null until they answered the first-join question. */
+  view: View | null;
+  onView: (view: View) => void;
   /** Back to the start screen; with the code and a message when the join did not work. */
   onLeave: (retry?: { code: string; message: string }) => void;
 }
 
 /** Watching someone else's session, read-only. */
-export function ViewerScreen({ code, onLeave }: Props) {
+export function ViewerScreen({ code, view, onView, onLeave }: Props) {
   const bridge = useBridge();
+  const [asking, setAsking] = useState(view === null);
+  const shown = view ?? DEVELOPER_VIEW;
   const workspace = useRef<WorkspaceHandle>(null);
   const [state, dispatch] = useReducer(viewerReducer, initial);
 
@@ -148,11 +154,17 @@ export function ViewerScreen({ code, onLeave }: Props) {
         {state.phase !== 'joining' && state.phase !== 'ended' && <StatusPill status={state.status} agentName={AGENT_NAMES[state.agent ?? 'claude-code']} terminal={terminal} />}
         {state.phase === 'ended' && <span className="pill ended">Ended</span>}
         <div className="spacer" />
+        <ViewMenu view={shown} onChange={onView} onAskAgain={() => setAsking(true)} />
         <button className="btn" onClick={leave}>
           <LogOut aria-hidden /> Leave
         </button>
       </header>
       <div>
+        {!shown.terminal && state.phase !== 'joining' && !state.timelineSupported && (
+          <div className="banner info" role="status">
+            This session can only be followed in the terminal: {terminal ? 'a terminal session has no steps to show.' : `${agentName} does not share its steps.`}
+          </div>
+        )}
         {state.phase === 'reconnecting' && (
           <div className="banner warning" role="status">
             <WifiOff aria-hidden /> Connection lost. Reconnecting… You will not miss anything; the session catches up when you are back.
@@ -170,6 +182,7 @@ export function ViewerScreen({ code, onLeave }: Props) {
           mode="viewer"
           agentName={agentName}
           terminal={terminal}
+          terminalHidden={!shown.terminal && state.timelineSupported}
           timelineSupported={state.timelineSupported}
           timeline={state.timeline}
           participants={state.participants}
@@ -186,6 +199,14 @@ export function ViewerScreen({ code, onLeave }: Props) {
         )}
       </div>
       <StatusBar info={statusBar} />
+      {asking && (
+        <FirstJoinDialog
+          onChoose={(chosen) => {
+            setAsking(false);
+            onView(chosen);
+          }}
+        />
+      )}
     </div>
   );
 }

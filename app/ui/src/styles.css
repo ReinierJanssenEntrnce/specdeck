@@ -407,3 +407,28 @@ html[data-platform="macos"] .drag-strip { display: block; position: fixed; top: 
 html.translucent body, html.translucent .start, html.translucent .splitter { background: transparent; }
 html.translucent .toolbar, html.translucent .statusbar { background: color-mix(in srgb, var(--surface) 55%, transparent); }
 html.translucent .workspace > .side { background: color-mix(in srgb, var(--surface) 72%, transparent); }
+
+/* View menu and the first-join question */
+.view-menu { position: relative; }
+.view-menu-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: 290px; display: grid; gap: 12px; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+.view-menu-panel fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+.view-menu-panel legend { padding: 0 0 4px; font-size: 12px; color: var(--text-muted); }
+.view-menu-panel .check { display: flex; align-items: center; gap: 10px; min-height: 28px; cursor: pointer; }
+.view-menu-panel .check input { width: 16px; height: 16px; margin: 0; }
+.view-menu-panel p { margin: 0; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; }
+.muted { color: var(--text-muted); }
+.link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
+.dialog.first-join { width: min(600px, 100%); gap: 16px; padding: 24px; }
+.dialog.first-join h2 { font-size: 18px; }
+.first-join .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.first-join .choice { display: grid; justify-items: start; align-content: start; gap: 6px; min-height: 140px; padding: 16px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.first-join .choice:hover { border-color: var(--accent); background: var(--accent-soft); }
+.first-join .choice svg { color: var(--accent); width: 22px; height: 22px; }
+.first-join .choice strong { font-size: 15px; }
+.first-join .choice span { color: var(--text-muted); line-height: 1.45; }
+
+/* The viewer's terminal, hidden: still laid out (xterm measures it) and still written to. */
+.workspace { position: relative; }
+.workspace.terminal-hidden { grid-template-columns: minmax(0, 1fr); }
+.workspace.terminal-hidden > .terminal-pane { position: absolute; inset: 0; visibility: hidden; pointer-events: none; }
+.search-over-side { position: absolute; top: 8px; right: 12px; z-index: 5; }

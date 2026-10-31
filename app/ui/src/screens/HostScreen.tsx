@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, Copy, Link2, Power, RefreshCw } from 'lucide-react';
 import { errorMessage, useBridge } from '../api/bridge';
-import type { AgentId, AgentStatus, HostEvent, Participant, SharingState, TimelineEvent } from '../api/types';
+import type { AgentId, AgentStatus, HostEvent, Participant, SharingState, TimelineEvent, View } from '../api/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { StatusPill } from '../components/StatusPill';
 import { StatusBar } from '../components/StatusBar';
+import { DEVELOPER_VIEW, ViewMenu } from '../components/ViewMenu';
 import { useMenu } from '../menu/menu';
 import { statusBarInfo } from '../model/statusbar';
 import { Toast, useToast } from '../components/Toast';
@@ -59,7 +60,14 @@ export function hostReducer(state: State, event: HostEvent | { type: 'limit'; li
 }
 
 /** The host's session: the agent's terminal, the invite code and everything viewers see. */
-export function HostScreen({ onEnded }: { onEnded: () => void }) {
+interface Props {
+  /** How the host follows the session; the host's terminal is always shown. */
+  view: View | null;
+  onView: (view: View) => void;
+  onEnded: () => void;
+}
+
+export function HostScreen({ view, onView, onEnded }: Props) {
   const bridge = useBridge();
   const workspace = useRef<WorkspaceHandle>(null);
   const [state, dispatch] = useReducer(hostReducer, initial);
@@ -124,6 +132,7 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
         </div>
         <StatusPill status={state.status} agentName={agentName} terminal={terminal} />
         <div className="spacer" />
+        <ViewMenu host view={view ?? DEVELOPER_VIEW} onChange={onView} />
         <InviteCode
           sharing={state.sharing}
           code={state.code}

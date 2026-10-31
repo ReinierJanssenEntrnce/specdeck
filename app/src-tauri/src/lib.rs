@@ -29,7 +29,7 @@ use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_window_state::StateFlags;
 
 use crate::host::{HostEvent, HostNotice, HostRuntime, SharingState, StartOptions, Summary};
-use crate::settings::Settings;
+use crate::settings::{Settings, View};
 use crate::viewer::{EndReason, ViewEvent, ViewerRuntime};
 
 /// Signalling service used when `SPECDECK_SIGNALLING_URL` is not set at build or run time: the
@@ -88,6 +88,8 @@ struct Profile {
     /// Set while a session is hosted, so a reopened window goes straight back to it.
     hosting: bool,
     notifications: bool,
+    /// How the user follows sessions; `None` until they answered the first-join question.
+    view: Option<View>,
     /// The window has a material behind it, so the UI may let it show through.
     translucent: bool,
     platform: &'static str,
@@ -126,6 +128,7 @@ fn profile(state: &AppState) -> Profile {
         agents,
         hosting: state.host.lock().unwrap().is_some(),
         notifications: settings.notifications,
+        view: settings.view,
         translucent: state.translucent.load(Ordering::Relaxed),
         platform: std::env::consts::OS,
     }
@@ -160,6 +163,21 @@ async fn set_notifications(
     {
         let mut settings = state.settings.lock().unwrap();
         settings.notifications = enabled;
+        state.save(&settings);
+    }
+    settings_changed(&app);
+    Ok(profile(&state))
+}
+
+#[tauri::command]
+async fn set_view(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    view: View,
+) -> Result<Profile, String> {
+    {
+        let mut settings = state.settings.lock().unwrap();
+        settings.view = Some(view);
         state.save(&settings);
     }
     settings_changed(&app);
@@ -721,6 +739,7 @@ pub fn run() {
             get_profile,
             set_username,
             set_notifications,
+            set_view,
             remove_recent_folder,
             start_hosting,
             host_attach,

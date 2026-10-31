@@ -21,6 +21,14 @@ export interface JoinLink {
   error?: string;
 }
 
+export type Steps = 'summary' | 'details';
+
+/** How someone follows sessions; the host's terminal is always shown. */
+export interface View {
+  terminal: boolean;
+  steps: Steps;
+}
+
 export interface Profile {
   username: string | null;
   recentFolders: RecentFolder[];
@@ -29,6 +37,8 @@ export interface Profile {
   hosting: boolean;
   /** Whether to show OS notifications while the window is not in front. */
   notifications: boolean;
+  /** How the user follows sessions; null until they answered the first-join question. */
+  view: View | null;
   /** The window has the platform's material behind it (macOS vibrancy, Windows Mica). */
   translucent: boolean;
   platform: string;

@@ -23,6 +23,9 @@ interface Props {
   agentName: string;
   /** A terminal session: texts talk about the shell instead of an agent. */
   terminal?: boolean;
+  /** The viewer chose not to see the terminal. It keeps running out of sight, so it comes back at
+   * once with everything it received. */
+  terminalHidden?: boolean;
   timelineSupported: boolean;
   timeline: TimelineEvent[];
   participants: Participant[];
@@ -217,8 +220,13 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
   ];
 
   return (
-    <main className="workspace" style={{ ['--side' as string]: `${sideWidth}px` }}>
-      <section className="terminal-pane" aria-label={props.mode === 'host' ? 'Terminal' : 'Terminal, read-only'}>
+    <main className={props.terminalHidden ? 'workspace terminal-hidden' : 'workspace'} style={{ ['--side' as string]: `${sideWidth}px` }}>
+      <section
+        className="terminal-pane"
+        aria-label={props.mode === 'host' ? 'Terminal' : 'Terminal, read-only'}
+        aria-hidden={props.terminalHidden || undefined}
+        inert={props.terminalHidden || undefined}
+      >
         <TerminalView
           ref={terminal}
           mode={props.mode}
@@ -232,7 +240,7 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
           onNewOutput={() => setNewOutput(true)}
           onSearchResults={setTerminalResult}
         />
-        {searching && (
+        {searching && !props.terminalHidden && (
           <SearchBar
             term={term}
             onTerm={onTerm}
@@ -256,7 +264,20 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
           </button>
         )}
       </section>
-      <Splitter width={sideWidth} onWidth={setSideWidth} />
+      {!props.terminalHidden && <Splitter width={sideWidth} onWidth={setSideWidth} />}
+      {searching && props.terminalHidden && (
+        <div className="search-over-side">
+          <SearchBar
+            term={term}
+            onTerm={onTerm}
+            onNext={() => step(true)}
+            onPrevious={() => step(false)}
+            onClose={closeSearch}
+            terminal={terminalResult}
+            timeline={timelineMatches.length}
+          />
+        </div>
+      )}
       <SidePanel tabs={tabs} selected={tab} onSelect={setTab} />
     </main>
   );

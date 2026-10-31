@@ -1,7 +1,8 @@
 import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ViewEvent } from '../api/types';
+import type { View, ViewEvent } from '../api/types';
+import { DEVELOPER_VIEW } from '../components/ViewMenu';
 import { demoParticipants } from '../api/demo';
 import { fakeBridge, renderWith } from '../test/helpers';
 import { terminal, TerminalViewStub } from '../test/terminal-stub';
@@ -11,14 +12,15 @@ vi.mock('../terminal/TerminalView', () => ({ TerminalView: TerminalViewStub }));
 
 let emit: (event: ViewEvent) => void = () => {};
 
-function setup() {
+function setup(view: View | null = DEVELOPER_VIEW) {
   const bridge = fakeBridge('viewer');
   bridge.joinSession = vi.fn(async (_code, _terminal, events) => {
     emit = events;
   });
   const onLeave = vi.fn();
-  renderWith(bridge, <ViewerScreen code="7K2M9QXH4TPA" onLeave={onLeave} />);
-  return { bridge, onLeave };
+  const onView = vi.fn();
+  renderWith(bridge, <ViewerScreen code="7K2M9QXH4TPA" view={view} onView={onView} onLeave={onLeave} />);
+  return { bridge, onLeave, onView };
 }
 
 function join() {
@@ -30,6 +32,36 @@ function join() {
 }
 
 beforeEach(() => vi.clearAllMocks());
+
+describe('how a viewer follows the session', () => {
+  it('asks the first time and remembers the answer', async () => {
+    const { onView } = setup(null);
+    await userEvent.click(screen.getByRole('button', { name: /Overview/ }));
+    expect(onView).toHaveBeenCalledWith({ terminal: false, steps: 'summary' });
+  });
+
+  it('keeps the terminal for a session without a timeline, and says why', () => {
+    setup({ terminal: false, steps: 'summary' });
+    act(() => emit({ type: 'joined', viewerId: 2, agent: 'open-code', timelineSupported: false, cols: 100, rows: 30 }));
+    expect(screen.getByRole('region', { name: 'Terminal, read-only' })).not.toHaveAttribute('aria-hidden');
+    expect(screen.getByText('This session can only be followed in the terminal: OpenCode does not share its steps.')).toBeInTheDocument();
+  });
+
+  it('hides the terminal for a viewer who chose so', () => {
+    setup({ terminal: false, steps: 'summary' });
+    join();
+    expect(screen.getByLabelText('Terminal, read-only', { selector: 'section' })).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('does not ask once a view is chosen, until asked to', async () => {
+    setup({ terminal: false, steps: 'summary' });
+    join();
+    expect(screen.queryByRole('dialog', { name: /How do you want to follow/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'View' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Show the first-join question again' }));
+    expect(screen.getByRole('dialog', { name: /How do you want to follow/ })).toBeInTheDocument();
+  });
+});
 
 describe('viewer screen', () => {
   it('shows that it is joining, then the host session read-only', () => {

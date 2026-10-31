@@ -9,9 +9,9 @@
 
 ## 2. View settings and the first-join question
 
-- [ ] 2.1 Add the view settings to the app (decision 4): stored, returned with the profile, and a command to set them; verify with settings tests (default `None`, round trip) and an app test of the command
-- [ ] 2.2 Add the View menu (terminal on/off for viewers, summary/details for everyone, "show the first-join question again") and the first-join question for viewers whose view is not set; verify with UI tests for both answers, remembering, asking again, the host never being asked, and the a11y test
-- [ ] 2.3 Hide the viewer terminal without unmounting it (decision 5), and keep it shown with a note for sessions without a timeline; verify with UI tests that output written while hidden is there when shown, that the hidden terminal is out of the accessibility tree, and the note for an OpenCode session
+- [x] 2.1 Add the view settings to the app (decision 4): stored, returned with the profile, and a command to set them; verify with settings tests (default `None`, round trip) and an app test of the command
+- [x] 2.2 Add the View menu (terminal on/off for viewers, summary/details for everyone, "show the first-join question again") and the first-join question for viewers whose view is not set; verify with UI tests for both answers, remembering, asking again, the host never being asked, and the a11y test
+- [x] 2.3 Hide the viewer terminal without unmounting it (decision 5), and keep it shown with a note for sessions without a timeline; verify with UI tests that output written while hidden is there when shown, that the hidden terminal is out of the accessibility tree, and the note for an OpenCode session
 
 ## 3. Conversation
 
