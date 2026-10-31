@@ -58,16 +58,16 @@
 - [ ] 6.7 Implement close-window-keeps-session and reattach by local replay. Verify manually: close the window with a viewer connected, reopen, and see full scrollback while the viewer stays connected
 - [x] 6.8 Add the local two-app test setup: `just local-dev` starts the local signalling + coturn stack (4.3) and two app instances, a host and a viewer, each with its own profile (`SPECDECK_PROFILE`: separate settings and data directory, separate single-instance key) pointed at the local signalling service; `just local-down` stops it. Verify by hosting in one window, joining with the code in the other, and seeing output, timeline and participants live
 - [ ] 6.9 Write `docs/user-guide.md` for hosting and joining, and verify each step against the running app
-- [ ] 6.10 Show usage in the UI: a status bar at the bottom of the host and viewer windows (folder, git state, model and effort, context gauge with percentage and used/size, session total, 5h and 7d rate limits with time to reset), small and quiet in style, tokens per prompt in the Timeline, an unavailable state, and nothing for OpenCode and omp. Verify with component tests and a live session
+- [x] 6.10 Show usage in the UI: a status bar at the bottom of the host and viewer windows (folder, git state, model and effort, context gauge with percentage and used/size, session total, 5h and 7d rate limits with time to reset), small and quiet in style, tokens per prompt in the Timeline, an unavailable state, and nothing for OpenCode and omp. Verify with component tests and a live session
 
 ## 7. Native integration
 
 - [x] 7.1 Build per-platform menus with `CmdOrCtrl` shortcuts and Open Recent; keep terminal-conflicting keys for the terminal. Verify on macOS (Windows and Linux in 8.3): Cmd/Ctrl+F opens search, Ctrl+C without selection interrupts Claude on Windows and Linux
 - [x] 7.2 Add the tray / menu-bar icon while hosting (state, viewer count, open window, copy code, close session). Verify on macOS (Windows and Linux in 8.3), and with 7.5 that starting the app again reopens the window on GNOME without an AppIndicator extension
-- [ ] 7.3 Add notifications (viewer joined/left, Claude waiting, session ended) only when unfocused, with a settings toggle. Verify on each OS including that clicking focuses the session
+- [x] 7.3 Add notifications (viewer joined/left, Claude waiting, session ended) only when unfocused, with a settings toggle. Verify on macOS (Windows and Linux in 8.3) including that clicking focuses the session
 - [ ] 7.4 Add appearance: follow OS light/dark live (including terminal theme), system fonts, macOS overlay title bar and vibrancy, Windows Mica, Linux opaque fallback. Verify by switching the OS theme with the app open on each OS
 - [ ] 7.5 Add window state and pane-size persistence, single instance and `specdeck://join/<code>` deep links (including the leave-current-session prompt). Verify on each OS by starting twice and opening a link from a browser
-- [ ] 7.6 Add the settings window (username, notifications) opened from the platform menu. Verify Cmd+, on macOS and File > Settings elsewhere
+- [x] 7.6 Add the settings window (username, notifications) opened from the platform menu. Verify Cmd+, on macOS (File > Settings on Windows and Linux in 8.3)
 - [ ] 7.7 Check keyboard-only use and screen-reader labels (VoiceOver, Narrator, Orca) for the start screen, host and viewer views; fix gaps and verify by joining a session using only the keyboard
 - [ ] 7.8 Update `docs/user-guide.md` for menus, tray, notifications and join links, and verify against the app
 
@@ -75,7 +75,7 @@
 
 - [ ] 8.1 Produce installers per platform (`.dmg` arm64 and x64, NSIS `.exe`, AppImage and `.deb`) with the `specdeck://` scheme registered; verify each installs and launches on a clean machine
 - [ ] 8.2 Add `scripts/measure-footprint` and record cold start and one-hour viewing memory on the reference machines; verify the targets (1.5 s, 250 MB) are met or report the gap
-- [ ] 8.3 Run the cross-platform checklist: host and viewer on different operating systems, a viewer relayed through TURN only, 20 viewers, window close and reopen with viewers connected, viewer reconnect after network loss; on Windows and Linux the menus and shortcuts (Ctrl+F opens search, Ctrl+C without selection interrupts the agent) and the tray icon (including starting the app again on GNOME without an AppIndicator extension); record results in `docs/verification.md`
+- [ ] 8.3 Run the cross-platform checklist: host and viewer on different operating systems, a viewer relayed through TURN only, 20 viewers, window close and reopen with viewers connected, viewer reconnect after network loss; on Windows and Linux the menus and shortcuts (Ctrl+F opens search, Ctrl+C without selection interrupts the agent) the tray icon (including starting the app again on GNOME without an AppIndicator extension), notifications with click-to-focus, and File > Settings; record results in `docs/verification.md`
 
 ## Workflow follow-up
 
