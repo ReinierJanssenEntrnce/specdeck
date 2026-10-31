@@ -82,6 +82,49 @@ pub enum Entry {
     UsageUnavailable {
         reason: String,
     },
+    /// What Claude Code reported to its status line; each one replaces the previous.
+    StatusLine {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context_window: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context_tokens: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        effort: Option<String>,
+        #[serde(default)]
+        fast: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        five_hour: Option<RateLimit>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        seven_day: Option<RateLimit>,
+    },
+    /// The git state of the session folder; each one replaces the previous.
+    Git {
+        /// `None` when the folder is not in a git repository.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        branch: Option<String>,
+        #[serde(default)]
+        dirty: bool,
+        #[serde(default)]
+        ahead: u32,
+        #[serde(default)]
+        behind: u32,
+        /// The linked worktree's name, when the folder is in one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        worktree: Option<String>,
+    },
+}
+
+/// Use of one of the host account's rate-limit windows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RateLimit {
+    /// Whole percent.
+    pub used_percent: u32,
+    /// When the window resets, in seconds since the Unix epoch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resets_at: Option<u64>,
 }
 
 /// Tokens used in a session, summed over every model call, subagents included.

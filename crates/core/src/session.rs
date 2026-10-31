@@ -22,6 +22,7 @@ use crate::hooks::{self, HookEndpoint, HookPayload};
 use crate::launcher::{self, LaunchError, LaunchOptions};
 use crate::mirror::{Colors, Mirror, Responder};
 use crate::output_log::{Batcher, OutputLog};
+use crate::status::{self, StatusLineReader};
 use crate::timeline::{TimelineBuilder, stamp};
 use crate::usage::{self, UsageReader};
 
@@ -60,6 +61,7 @@ enum Command {
     HostWindow(bool),
     Colors(Colors),
     Hook(HookPayload),
+    Git(Entry),
     Exited { code: u32 },
     Close,
 }
@@ -137,7 +139,8 @@ pub struct HostSession {
     commands: mpsc::UnboundedSender<Command>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     host_entered: Arc<Mutex<Option<Instant>>>,
-    _hooks: Option<(HookEndpoint, NamedTempFile)>,
+    /// The endpoint, the settings file and the status-line relay script.
+    _hooks: Option<(HookEndpoint, NamedTempFile, NamedTempFile)>,
 }
 
 impl HostSession {
@@ -166,10 +169,19 @@ impl HostSession {
             })
             .await
             .map_err(io_error)?;
+            // The status line is relayed to SpecDeck and then shown as the host set it up.
+            let host_line = status::host_status_line(&config.folder, env);
+            let relay = status::write_relay_script(&config.data_dir, &endpoint.status_url)
+                .map_err(io_error)?;
+            let status_line = status::status_line_setting(relay.path(), host_line.as_ref());
             let settings =
-                hooks::write_hook_settings(&config.data_dir, &endpoint.url).map_err(io_error)?;
+                hooks::write_hook_settings(&config.data_dir, &endpoint.url, Some(status_line))
+                    .map_err(io_error)?;
             (options.extra_args, options.extra_env) = endpoint.launch_additions(settings.path());
-            Some((endpoint, settings))
+            if let Some(command) = host_line.as_ref().and_then(status::host_command) {
+                options.extra_env.push((status::HOST_STATUS_LINE_ENV.into(), command.into()));
+            }
+            Some((endpoint, settings, relay))
         } else {
             None
         };
@@ -179,6 +191,7 @@ impl HostSession {
         let killer = process.child.clone_killer();
         spawn_reader(process.reader, commands.clone());
         spawn_exit_watcher(process.child, commands.clone());
+        spawn_git_watcher(config.folder.clone(), env.clone(), commands.clone());
 
         let (events, event_rx) = mpsc::unbounded_channel();
         let view = SessionView {
@@ -211,6 +224,8 @@ impl HostSession {
             activity: Activity::new(config.agent),
             builder: TimelineBuilder::new(config.folder.to_string_lossy()),
             usage: config.agent.has_timeline().then(|| UsageReader::new(usage::projects_dir(env))),
+            status_line: StatusLineReader::default(),
+            git: None,
             timeline: session.timeline.clone(),
             status: session.status.clone(),
             host_entered: session.host_entered.clone(),
@@ -289,6 +304,8 @@ struct Pump {
     builder: TimelineBuilder,
     /// Token usage from Claude Code's transcript; only for agents with a timeline.
     usage: Option<UsageReader>,
+    status_line: StatusLineReader,
+    git: Option<Entry>,
     timeline: Arc<RwLock<Vec<TimelineEvent>>>,
     status: Arc<Mutex<AgentStatus>>,
     host_entered: Arc<Mutex<Option<Instant>>>,
@@ -355,6 +372,12 @@ impl Pump {
                     self.flush();
                     self.handle_hook(payload);
                 }
+                Some(Command::Git(entry)) => {
+                    if self.git.as_ref() != Some(&entry) {
+                        self.git = Some(entry.clone());
+                        self.emit_entry(entry);
+                    }
+                }
                 Some(Command::Exited { code }) => {
                     self.flush();
                     let changes = self.activity.on_exit();
@@ -370,7 +393,16 @@ impl Pump {
         if let Some(usage) = &mut self.usage {
             usage.on_hook(&payload);
         }
-        self.handle_timeline(payload);
+        // Status-line updates are not timeline events: they say nothing about the hooks working.
+        if payload.get("hook_event_name").and_then(|name| name.as_str())
+            == Some(hooks::STATUS_LINE_EVENT)
+        {
+            if let Some(entry) = self.status_line.on_payload(&payload) {
+                self.emit_entry(entry);
+            }
+        } else {
+            self.handle_timeline(payload);
+        }
         self.poll_usage();
     }
 
@@ -458,6 +490,21 @@ fn spawn_reader(mut reader: Box<dyn Read + Send>, commands: mpsc::UnboundedSende
 }
 
 /// Waits for the agent to exit on a blocking thread.
+/// How often the session folder's git state is checked.
+const GIT_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Checks the session folder's git state until the session ends.
+fn spawn_git_watcher(folder: PathBuf, env: Environment, commands: mpsc::UnboundedSender<Command>) {
+    std::thread::spawn(move || {
+        loop {
+            if commands.send(Command::Git(status::git_entry(&folder, &env))).is_err() {
+                break;
+            }
+            std::thread::sleep(GIT_INTERVAL);
+        }
+    });
+}
+
 fn spawn_exit_watcher(
     mut child: Box<dyn portable_pty::Child + Send + Sync>,
     commands: mpsc::UnboundedSender<Command>,

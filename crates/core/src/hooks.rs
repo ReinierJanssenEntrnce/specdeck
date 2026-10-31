@@ -40,6 +40,9 @@ pub const HOOK_EVENTS: [&str; 7] = [
 /// Events that take a tool matcher.
 const TOOL_EVENTS: [&str; 3] = ["PreToolUse", "PostToolUse", "PostToolUseFailure"];
 
+/// The event name given to payloads relayed from Claude Code's status line (`/status`).
+pub const STATUS_LINE_EVENT: &str = "SpecDeckStatusLine";
+
 /// Write hooks carry whole files, so allow large bodies, but not unbounded ones.
 const MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
 
@@ -69,10 +72,19 @@ pub fn hook_settings(url: &str) -> Value {
     json!({ "hooks": hooks })
 }
 
-/// Writes the settings to a user-only file in `dir`, deleted when the returned handle drops.
-pub fn write_hook_settings(dir: &Path, url: &str) -> io::Result<NamedTempFile> {
+/// Writes the settings, with `status_line` as Claude Code's `statusLine` when given, to a
+/// user-only file in `dir`, deleted when the returned handle drops.
+pub fn write_hook_settings(
+    dir: &Path,
+    url: &str,
+    status_line: Option<Value>,
+) -> io::Result<NamedTempFile> {
     let mut file = tempfile::Builder::new().prefix("hooks-").suffix(".json").tempfile_in(dir)?;
-    serde_json::to_writer_pretty(&mut file, &hook_settings(url))?;
+    let mut settings = hook_settings(url);
+    if let Some(status_line) = status_line {
+        settings["statusLine"] = status_line;
+    }
+    serde_json::to_writer_pretty(&mut file, &settings)?;
     file.flush()?;
     Ok(file)
 }
@@ -80,6 +92,8 @@ pub fn write_hook_settings(dir: &Path, url: &str) -> io::Result<NamedTempFile> {
 /// A running hook endpoint. Stops when dropped.
 pub struct HookEndpoint {
     pub url: String,
+    /// Where the status-line relay posts what Claude Code gives its status line.
+    pub status_url: String,
     pub token: String,
     stop: Option<oneshot::Sender<()>>,
 }
@@ -92,12 +106,14 @@ impl HookEndpoint {
         let token = random_token()?;
         let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).await?;
         let url = format!("http://{}/hooks", listener.local_addr()?);
+        let status_url = format!("http://{}/status", listener.local_addr()?);
         let state = Arc::new(Handler {
             expected: format!("Bearer {token}"),
             on_payload: Box::new(on_payload),
         });
         let app = Router::new()
             .route("/hooks", post(receive))
+            .route("/status", post(receive_status_line))
             .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
             .with_state(state);
         let (stop, stopped) = oneshot::channel();
@@ -108,7 +124,7 @@ impl HookEndpoint {
                 })
                 .await;
         });
-        Ok(Self { url, token, stop: Some(stop) })
+        Ok(Self { url, status_url, token, stop: Some(stop) })
     }
 
     /// Arguments and environment that make Claude Code send its hooks here.
@@ -149,6 +165,25 @@ async fn receive(
     if !payload.get("hook_event_name").is_some_and(Value::is_string) {
         return StatusCode::BAD_REQUEST;
     }
+    (handler.on_payload)(payload);
+    StatusCode::NO_CONTENT
+}
+
+/// A status-line payload has no event name of its own; it gets [`STATUS_LINE_EVENT`].
+async fn receive_status_line(
+    State(handler): State<Arc<Handler>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> StatusCode {
+    let authorization =
+        headers.get(header::AUTHORIZATION).map(|v| v.as_bytes()).unwrap_or_default();
+    if !constant_time_eq(authorization, handler.expected.as_bytes()) {
+        return StatusCode::UNAUTHORIZED;
+    }
+    let Ok(Value::Object(mut payload)) = serde_json::from_slice::<Value>(&body) else {
+        return StatusCode::BAD_REQUEST;
+    };
+    payload.insert("hook_event_name".into(), STATUS_LINE_EVENT.into());
     (handler.on_payload)(payload);
     StatusCode::NO_CONTENT
 }
@@ -255,7 +290,7 @@ mod tests {
     fn settings_file_is_user_only_and_removed_on_drop() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
-        let file = write_hook_settings(dir.path(), "http://127.0.0.1:1/hooks").unwrap();
+        let file = write_hook_settings(dir.path(), "http://127.0.0.1:1/hooks", None).unwrap();
         let path = file.path().to_owned();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);

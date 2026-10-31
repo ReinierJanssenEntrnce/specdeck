@@ -93,10 +93,16 @@ async fn terminal_only_agent_takes_host_input_and_resizes() {
     // Gap-free and in order: the resize follows all earlier output.
     assert!(records.iter().enumerate().all(|(i, r)| r.seq() == i as u64));
 
-    // No events from this agent: only the engine's own session-started entry.
-    let timeline = session.timeline();
-    assert_eq!(timeline.len(), 1);
-    assert_eq!(timeline[0].entry, Entry::SessionStarted);
+    // No events from this agent: only the engine's own entries, the start and the folder's git
+    // state (not a repository here).
+    let entries: Vec<Entry> = session.timeline().into_iter().map(|e| e.entry).collect();
+    assert_eq!(
+        entries,
+        [
+            Entry::SessionStarted,
+            Entry::Git { branch: None, dirty: false, ahead: 0, behind: 0, worktree: None }
+        ]
+    );
     assert_eq!(session.status(), AgentStatus::Unknown);
 
     let log_path = session.log().path().to_owned();
@@ -138,7 +144,12 @@ exit 3"#,
     assert_eq!(exited, SessionEvent::Exited { code: 3 });
     assert!(output_text(&session).contains("posted"), "{}", output_text(&session));
 
-    let entries: Vec<Entry> = session.timeline().into_iter().map(|e| e.entry).collect();
+    let entries: Vec<Entry> = session
+        .timeline()
+        .into_iter()
+        .map(|e| e.entry)
+        .filter(|e| !matches!(e, Entry::Git { .. }))
+        .collect();
     assert_eq!(
         entries,
         [
@@ -148,7 +159,8 @@ exit 3"#,
         ]
     );
     // The prompt happened after "starting" was written, so it points into the output.
-    assert!(session.timeline()[1].output_seq >= 0);
+    let prompt = session.timeline().into_iter().find(|e| matches!(e.entry, Entry::Prompt { .. }));
+    assert!(prompt.unwrap().output_seq >= 0);
 
     // The process exited, but the session stays open until the host closes it.
     assert_eq!(session.status(), AgentStatus::Exited);
@@ -204,6 +216,54 @@ read wait"#,
     .await
     .expect("usage of both calls did not arrive");
     assert_eq!(last, (2 * 1010 + 12, Some(1010), Some(200_000)));
+    session.close();
+}
+
+#[tokio::test]
+async fn status_line_reaches_specdeck_and_the_hosts_own_line_still_shows() {
+    let bin = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::write(
+        home.path().join(".claude/settings.json"),
+        r#"{"statusLine":{"type":"command","command":"read -r x; echo host-line-shown"}}"#,
+    )
+    .unwrap();
+    // Runs the status-line command from the --settings file with a payload, as Claude Code does.
+    fake_agent(
+        bin.path(),
+        "claude",
+        r#"cmd=$(sed -n 's/.*"command": "\(sh .*\)".*/\1/p' "$2" | head -n 1)
+printf '%s\n' '{"model":{"display_name":"Opus 5.5 (1M context)"},"rate_limits":{"five_hour":{"used_percentage":23,"resets_at":1793500000}}}' | sh -c "$cmd"
+read wait"#,
+    );
+    let mut env = env(bin.path());
+    env.set("HOME", home.path());
+
+    let (session, mut events) =
+        HostSession::start(config(AgentId::ClaudeCode, bin.path(), data.path()), &env)
+            .await
+            .unwrap();
+    wait_for_output(&session, &mut events, "host-line-shown").await;
+    let status_line = || {
+        session.timeline().into_iter().find_map(|event| match event.entry {
+            Entry::StatusLine { model, five_hour, .. } => Some((model, five_hour)),
+            _ => None,
+        })
+    };
+    let (model, five_hour) = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if let Some(found) = status_line() {
+                return found;
+            }
+            events.recv().await.expect("session ended");
+        }
+    })
+    .await
+    .expect("the status line did not reach SpecDeck");
+    assert_eq!(model.as_deref(), Some("Opus 5.5"));
+    assert_eq!(five_hour.map(|limit| limit.used_percent), Some(23));
     session.close();
 }
 

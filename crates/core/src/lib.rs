@@ -12,6 +12,7 @@ pub mod peer;
 pub mod session;
 pub mod sharing;
 pub mod signalling_client;
+pub mod status;
 pub mod timeline;
 pub mod usage;
 pub mod viewer;
