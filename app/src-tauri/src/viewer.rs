@@ -69,6 +69,7 @@ impl ViewerRuntime {
         peer: PeerConfig,
         terminal: Channel<InvokeResponseBody>,
         events: Channel<ViewEvent>,
+        on_ended: impl Fn(EndReason) + Send + 'static,
     ) -> Self {
         let config =
             ViewerConfig { signalling_url, username, peer, connect_timeout: CONNECT_TIMEOUT };
@@ -80,7 +81,12 @@ impl ViewerRuntime {
                         terminal.send(InvokeResponseBody::Raw(encode_records(&records))).is_ok()
                     }
                     other => match translate(other) {
-                        Some(event) => events.send(event).is_ok(),
+                        Some(event) => {
+                            if let ViewEvent::Ended { reason } = event {
+                                on_ended(reason);
+                            }
+                            events.send(event).is_ok()
+                        }
                         None => true,
                     },
                 };

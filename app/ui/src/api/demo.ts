@@ -14,6 +14,7 @@ export const demoProfile: Profile = {
     { path: '/Users/nick/work/billing-api', name: 'billing-api' },
   ],
   lastAgent: 'claude-code',
+  notifications: true,
   agents: [
     { id: 'claude-code', name: 'Claude Code', installed: true, hasTimeline: true },
     { id: 'open-code', name: 'OpenCode', installed: true, hasTimeline: false },
@@ -158,6 +159,7 @@ export function demoBridge(screen: string): Bridge {
   return {
     getProfile: async () => profile,
     setUsername: async (username) => ({ ...profile, username }),
+    setNotifications: async (notifications) => ({ ...profile, notifications }),
     removeRecentFolder: async (path) => ({ ...profile, recentFolders: profile.recentFolders.filter((f) => f.path !== path) }),
     chooseFolder: async () => '/Users/nick/projects/webshop',
     startHosting: async () => {},

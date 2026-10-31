@@ -11,6 +11,7 @@ export type TerminalSink = (data: ArrayBuffer) => void;
 export interface Bridge {
   getProfile(): Promise<Profile>;
   setUsername(username: string): Promise<Profile>;
+  setNotifications(enabled: boolean): Promise<Profile>;
   removeRecentFolder(path: string): Promise<Profile>;
   /** Opens the system folder picker; null when cancelled. */
   chooseFolder(): Promise<string | null>;

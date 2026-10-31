@@ -1,4 +1,5 @@
-//! What the app remembers between runs: the user's name, recent folders and last used agent.
+//! What the app remembers between runs: the user's name, recent folders, last used agent and
+//! whether to show notifications.
 //! Stored as JSON in the app's config directory.
 
 use std::path::{Path, PathBuf};
@@ -9,13 +10,20 @@ use specdeck_protocol::AgentId;
 /// Recent folders listed on the start screen.
 pub const MAX_RECENT: usize = 5;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub username: Option<String>,
     /// Newest first, each once.
     pub recent_folders: Vec<PathBuf>,
     pub last_agent: Option<AgentId>,
+    pub notifications: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self { username: None, recent_folders: Vec::new(), last_agent: None, notifications: true }
+    }
 }
 
 impl Settings {
@@ -107,6 +115,17 @@ mod tests {
         assert_eq!(Settings::load(&path), Settings::default());
         std::fs::write(&path, b"not json").unwrap();
         assert_eq!(Settings::load(&path), Settings::default());
+    }
+
+    #[test]
+    fn notifications_are_on_unless_turned_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        // Settings from before the option existed.
+        std::fs::write(&path, br#"{"username":"nick"}"#).unwrap();
+        assert!(Settings::load(&path).notifications);
+        std::fs::write(&path, br#"{"notifications":false}"#).unwrap();
+        assert!(!Settings::load(&path).notifications);
     }
 
     #[test]

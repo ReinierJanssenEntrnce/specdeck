@@ -21,6 +21,8 @@ export interface Profile {
   lastAgent: AgentId | null;
   agents: AgentInfo[];
   hosting: boolean;
+  /** Whether to show OS notifications while the window is not in front. */
+  notifications: boolean;
   platform: string;
 }
 

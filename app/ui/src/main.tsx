@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BridgeContext, type Bridge } from './api/bridge';
 import { tauriBridge } from './api/tauri';
 import { App } from './App';
+import { SettingsScreen } from './screens/SettingsScreen';
 import './styles.css';
 
 async function bridge(): Promise<Bridge> {
@@ -19,7 +20,7 @@ void bridge().then((value) =>
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <BridgeContext.Provider value={value}>
-        <App />
+        {new URLSearchParams(location.search).get('window') === 'settings' ? <SettingsScreen /> : <App />}
       </BridgeContext.Provider>
     </StrictMode>,
   ),

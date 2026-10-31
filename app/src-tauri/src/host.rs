@@ -15,7 +15,7 @@ use specdeck_core::peer::PeerConfig;
 use specdeck_core::session::{HostConfig, HostSession, SessionEvent};
 use specdeck_core::sharing::{MAX_VIEWERS, Sharing, SharingConfig, SharingEvent};
 use specdeck_protocol::control::{Participant, Role};
-use specdeck_protocol::timeline::TimelineEvent;
+use specdeck_protocol::timeline::{Entry, TimelineEvent};
 use specdeck_protocol::{AgentId, AgentStatus};
 use tauri::ipc::{Channel, InvokeResponseBody};
 
@@ -73,8 +73,38 @@ pub struct Summary {
     pub sharing: SharingState,
 }
 
+/// What the app shows of the session outside its window: the tray, and notifications.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HostNotice {
+    /// The tray's view changed.
+    Summary(Summary),
+    ViewerJoined(String),
+    ViewerLeft(String),
+    /// The agent finished a turn or asks something; `message` says what, when it asks.
+    AgentWaiting {
+        message: Option<String>,
+    },
+}
+
 /// Hears about changes the app shows outside the window.
-pub type Observer = Arc<dyn Fn(Summary) + Send + Sync>;
+pub type Observer = Arc<dyn Fn(HostNotice) + Send + Sync>;
+
+/// Viewers who joined and left between two participant lists, by name.
+fn viewer_changes(before: &[Participant], after: &[Participant]) -> Vec<HostNotice> {
+    let viewers = |list: &[Participant]| -> Vec<(u32, String)> {
+        list.iter().filter(|p| p.role == Role::Viewer).map(|p| (p.id, p.label.clone())).collect()
+    };
+    let (before, after) = (viewers(before), viewers(after));
+    let joined = after
+        .iter()
+        .filter(|(id, _)| !before.iter().any(|(b, _)| b == id))
+        .map(|(_, name)| HostNotice::ViewerJoined(name.clone()));
+    let left = before
+        .iter()
+        .filter(|(id, _)| !after.iter().any(|(a, _)| a == id))
+        .map(|(_, name)| HostNotice::ViewerLeft(name.clone()));
+    joined.chain(left).collect()
+}
 
 /// The window's view of the session, kept while no window is attached.
 struct Ui {
@@ -87,24 +117,27 @@ struct Ui {
     events: Option<Channel<HostEvent>>,
     observer: Observer,
     last_summary: Option<Summary>,
+    /// Notices for the observer, told once the lock is released.
+    pending: Vec<HostNotice>,
 }
 
 impl Ui {
     /// What to tell the observer, if what it shows changed. Call the observer after releasing the
     /// lock: updating the tray waits for the main thread, which may be waiting for this lock.
     #[must_use]
-    fn observe(&mut self) -> Option<Notice> {
+    fn observe(&mut self) -> Notice {
         let summary = Summary {
             status: self.status,
             viewers: self.participants.iter().filter(|p| p.role == Role::Viewer).count(),
             code: self.code.clone(),
             sharing: self.sharing,
         };
-        if self.last_summary.as_ref() == Some(&summary) {
-            return None;
+        let mut notices = std::mem::take(&mut self.pending);
+        if self.last_summary.as_ref() != Some(&summary) {
+            self.last_summary = Some(summary.clone());
+            notices.insert(0, HostNotice::Summary(summary));
         }
-        self.last_summary = Some(summary.clone());
-        Some(Notice { observer: self.observer.clone(), summary })
+        Notice { observer: self.observer.clone(), notices }
     }
 
     fn send(&mut self, event: HostEvent) {
@@ -116,16 +149,16 @@ impl Ui {
     }
 }
 
-/// A change for the observer, told once the lock is released.
+/// Changes for the observer, told once the lock is released.
 struct Notice {
     observer: Observer,
-    summary: Summary,
+    notices: Vec<HostNotice>,
 }
 
 impl Notice {
-    fn tell(notice: Option<Self>) {
-        if let Some(notice) = notice {
-            (notice.observer)(notice.summary);
+    fn tell(self) {
+        for notice in self.notices {
+            (self.observer)(notice);
         }
     }
 }
@@ -185,9 +218,10 @@ impl HostRuntime {
             events: None,
             observer,
             last_summary: None,
+            pending: Vec::new(),
         }));
         let notice = ui.lock().unwrap().observe();
-        Notice::tell(notice);
+        notice.tell();
 
         let shared = ui.clone();
         tokio::spawn(async move {
@@ -200,9 +234,24 @@ impl HostRuntime {
                             ui.send(HostEvent::Status { status });
                             let notice = ui.observe();
                             drop(ui);
-                            Notice::tell(notice);
+                            notice.tell();
                         }
-                        Some(SessionEvent::Timeline(event)) => shared.lock().unwrap().send(HostEvent::Timeline { event }),
+                        Some(SessionEvent::Timeline(event)) => {
+                            let mut ui = shared.lock().unwrap();
+                            match &event.entry {
+                                Entry::Response { .. } => {
+                                    ui.pending.push(HostNotice::AgentWaiting { message: None });
+                                }
+                                Entry::Attention { message } => ui
+                                    .pending
+                                    .push(HostNotice::AgentWaiting { message: Some(message.clone()) }),
+                                _ => {}
+                            }
+                            ui.send(HostEvent::Timeline { event });
+                            let notice = ui.observe();
+                            drop(ui);
+                            notice.tell();
+                        }
                         Some(SessionEvent::Exited { code }) => {
                             let mut ui = shared.lock().unwrap();
                             ui.exited = Some(code);
@@ -220,7 +269,7 @@ impl HostRuntime {
                             ui.send(HostEvent::Sharing { state: SharingState::Ready, code });
                             let notice = ui.observe();
                             drop(ui);
-                            Notice::tell(notice);
+                            notice.tell();
                         }
                         Some(SharingEvent::Unavailable) => {
                             let mut ui = shared.lock().unwrap();
@@ -229,15 +278,17 @@ impl HostRuntime {
                             ui.send(HostEvent::Sharing { state: SharingState::Unavailable, code });
                             let notice = ui.observe();
                             drop(ui);
-                            Notice::tell(notice);
+                            notice.tell();
                         }
                         Some(SharingEvent::Participants(participants)) => {
                             let mut ui = shared.lock().unwrap();
+                            let changes = viewer_changes(&ui.participants, &participants);
+                            ui.pending.extend(changes);
                             ui.participants = participants.clone();
                             ui.send(HostEvent::Participants { participants });
                             let notice = ui.observe();
                             drop(ui);
-                            Notice::tell(notice);
+                            notice.tell();
                         }
                         None => break,
                     },
@@ -333,7 +384,7 @@ impl HostRuntime {
         ui.send(HostEvent::Sharing { state: SharingState::Connecting, code: None });
         let notice = ui.observe();
         drop(ui);
-        Notice::tell(notice);
+        notice.tell();
         self.sharing.new_code();
     }
 
@@ -356,5 +407,26 @@ impl HostRuntime {
         self.attach_generation.fetch_add(1, Ordering::SeqCst);
         self.sharing.close();
         self.session.close();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn person(id: u32, role: Role, label: &str) -> Participant {
+        Participant { id, username: label.into(), role, label: label.into() }
+    }
+
+    #[test]
+    fn tells_who_joined_and_left() {
+        let host = person(0, Role::Host, "Nick");
+        let before = [host.clone(), person(1, Role::Viewer, "Anna"), person(2, Role::Viewer, "Bo")];
+        let after = [host, person(2, Role::Viewer, "Bo"), person(3, Role::Viewer, "Anna (2)")];
+        assert_eq!(
+            viewer_changes(&before, &after),
+            [HostNotice::ViewerJoined("Anna (2)".into()), HostNotice::ViewerLeft("Anna".into())]
+        );
+        assert!(viewer_changes(&after, &after).is_empty());
     }
 }

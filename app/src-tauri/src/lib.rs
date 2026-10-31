@@ -1,5 +1,6 @@
 mod host;
 mod menu;
+mod notify;
 mod settings;
 mod terminal;
 mod tray;
@@ -22,10 +23,11 @@ use tauri::{
 };
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_notification::NotificationExt;
 
-use crate::host::{HostEvent, HostRuntime, SharingState, StartOptions, Summary};
+use crate::host::{HostEvent, HostNotice, HostRuntime, SharingState, StartOptions, Summary};
 use crate::settings::Settings;
-use crate::viewer::{ViewEvent, ViewerRuntime};
+use crate::viewer::{EndReason, ViewEvent, ViewerRuntime};
 
 /// Signalling service used when `SPECDECK_SIGNALLING_URL` is not set at build or run time: the
 /// local stack from `just local-up`, reached through `just local-dev`'s port-forward.
@@ -78,6 +80,7 @@ struct Profile {
     agents: Vec<AgentInfo>,
     /// Set while a session is hosted, so a reopened window goes straight back to it.
     hosting: bool,
+    notifications: bool,
     platform: &'static str,
 }
 
@@ -108,6 +111,7 @@ fn profile(state: &AppState) -> Profile {
         last_agent: settings.last_agent,
         agents,
         hosting: state.host.lock().unwrap().is_some(),
+        notifications: settings.notifications,
         platform: std::env::consts::OS,
     }
 }
@@ -118,13 +122,39 @@ async fn get_profile(state: State<'_, AppState>) -> Result<Profile, String> {
 }
 
 #[tauri::command]
-async fn set_username(state: State<'_, AppState>, username: String) -> Result<Profile, String> {
+async fn set_username(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    username: String,
+) -> Result<Profile, String> {
     {
         let mut settings = state.settings.lock().unwrap();
         settings.set_username(&username);
         state.save(&settings);
     }
+    settings_changed(&app);
     Ok(profile(&state))
+}
+
+#[tauri::command]
+async fn set_notifications(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<Profile, String> {
+    {
+        let mut settings = state.settings.lock().unwrap();
+        settings.notifications = enabled;
+        state.save(&settings);
+    }
+    settings_changed(&app);
+    Ok(profile(&state))
+}
+
+/// Shows a notification, if the user wants them and the window is not in front.
+fn notify(app: &AppHandle, title: &str, body: &str) {
+    let enabled = app.state::<AppState>().settings.lock().unwrap().notifications;
+    notify::notify(app, enabled, title, body);
 }
 
 #[tauri::command]
@@ -177,9 +207,26 @@ async fn start_hosting(
         sharing: SharingState::Connecting,
     };
     let _ = tray::show(&app, &folder_name, agent.display_name(), &starting);
-    let tray_app = app.clone();
-    let observer: host::Observer = Arc::new(move |summary: Summary| {
-        tray::update(&tray_app, &folder_name, agent.display_name(), &summary);
+    let observed = app.clone();
+    let observer: host::Observer = Arc::new(move |notice: HostNotice| match notice {
+        HostNotice::Summary(summary) => {
+            tray::update(&observed, &folder_name, agent.display_name(), &summary);
+        }
+        HostNotice::ViewerJoined(name) => {
+            notify(
+                &observed,
+                &format!("{name} joined"),
+                &format!("{name} is watching your session."),
+            );
+        }
+        HostNotice::ViewerLeft(name) => {
+            notify(&observed, &format!("{name} left"), &format!("{name} stopped watching."));
+        }
+        HostNotice::AgentWaiting { message } => {
+            let body =
+                message.unwrap_or_else(|| "It finished and waits for your next prompt.".into());
+            notify(&observed, &format!("{} is waiting for you", agent.display_name()), &body);
+        }
     });
     let runtime = match HostRuntime::start(options, &state.environment(), observer).await {
         Ok(runtime) => runtime,
@@ -267,6 +314,7 @@ fn end_session(app: &AppHandle) {
 
 #[tauri::command]
 async fn join_session(
+    app: AppHandle,
     state: State<'_, AppState>,
     code: String,
     terminal: Channel<InvokeResponseBody>,
@@ -283,6 +331,17 @@ async fn join_session(
         PeerConfig::default(),
         terminal,
         events,
+        move |reason| match reason {
+            EndReason::Closed => notify(
+                &app,
+                "The host ended the session",
+                "You can keep reading what was shared until you leave.",
+            ),
+            EndReason::Removed => {
+                notify(&app, "The host removed you", "You are no longer connected to the session.")
+            }
+            _ => {}
+        },
     );
     if let Some(previous) = state.viewer.lock().unwrap().replace(runtime) {
         previous.leave();
@@ -356,6 +415,7 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     let id = event.id().as_ref();
     match id {
         menu::ids::QUIT => return quit(app),
+        menu::ids::SETTINGS => return open_settings_window(app),
         tray::ids::OPEN => return open_main_window(app),
         tray::ids::COPY_CODE => return copy_invite_code(app),
         tray::ids::END => return confirm_end_session(app),
@@ -426,6 +486,33 @@ fn quit(app: &AppHandle) {
         });
 }
 
+/// The settings window: one at a time, brought to the front when open.
+fn open_settings_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        return;
+    }
+    let title = if cfg!(target_os = "macos") { "Settings" } else { "SpecDeck Settings" };
+    let _ = WebviewWindowBuilder::new(
+        app,
+        "settings",
+        WebviewUrl::App("index.html?window=settings".into()),
+    )
+    .title(title)
+    .inner_size(460.0, 300.0)
+    .resizable(false)
+    .minimizable(false)
+    .maximizable(false)
+    .center()
+    .build();
+}
+
+/// Tells the main window that the settings changed, so it shows the new name.
+fn settings_changed(app: &AppHandle) {
+    let _ = app.emit_to("main", "menu", MenuCommand { id: "profile-changed".into(), path: None });
+}
+
 fn window_title() -> String {
     match std::env::var("SPECDECK_PROFILE").ok().filter(|p| cfg!(debug_assertions) && !p.is_empty())
     {
@@ -439,6 +526,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let config_dir = profile_dir(app.path().app_config_dir()?);
             let data_dir = profile_dir(app.path().app_cache_dir()?).join("sessions");
@@ -465,11 +553,17 @@ pub fn run() {
                 let _ = window.set_title(&window_title());
             }
             refresh_menu(app.handle());
+            // A click on a notification brings the session to the front.
+            let handle = app.handle().clone();
+            let _ = app.notification().on_action(move |_| open_main_window(&handle));
             Ok(())
         })
         .on_menu_event(on_menu_event)
         .on_window_event(|window, event| {
-            if let WindowEvent::Destroyed = event {
+            // Only the main window shows a session; the settings window comes and goes.
+            if let WindowEvent::Destroyed = event
+                && window.label() == "main"
+            {
                 let state = window.state::<AppState>();
                 // A hosted session keeps running without its window; viewing ends with it.
                 if let Some(host) = state.host.lock().unwrap().as_ref() {
@@ -483,6 +577,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_profile,
             set_username,
+            set_notifications,
             remove_recent_folder,
             start_hosting,
             host_attach,

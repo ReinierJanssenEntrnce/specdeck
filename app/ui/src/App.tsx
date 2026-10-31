@@ -23,20 +23,22 @@ export function App() {
   const [leaveFor, setLeaveFor] = useState<MenuCommand | null>(null);
   const [shortcuts, setShortcuts] = useState(false);
 
-  useEffect(() => bridge.onMenu(dispatchMenu), [bridge]);
-  useMenu((command) => {
-    if (command.id === 'shortcuts') return setShortcuts(true);
-    if (!START_COMMANDS.has(command.id)) return;
-    if (screen.kind === 'start') setStartCommand(command);
-    else if (screen.kind === 'viewer') setLeaveFor(command);
-    // A hosted session answers these itself: one session at a time.
-  });
-
   const refresh = () =>
     bridge.getProfile().then((p) => {
       setProfile(p);
       return p;
     });
+
+  useEffect(() => bridge.onMenu(dispatchMenu), [bridge]);
+  useMenu((command) => {
+    if (command.id === 'shortcuts') return setShortcuts(true);
+    // Changed in the settings window.
+    if (command.id === 'profile-changed') return void refresh();
+    if (!START_COMMANDS.has(command.id)) return;
+    if (screen.kind === 'start') setStartCommand(command);
+    else if (screen.kind === 'viewer') setLeaveFor(command);
+    // A hosted session answers these itself: one session at a time.
+  });
 
   useEffect(() => {
     refresh()
