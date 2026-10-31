@@ -718,10 +718,10 @@ pub fn run() {
 
     app.run(|app, event| match event {
         // Closing the last window while hosting keeps the session (and the app) running.
-        RunEvent::ExitRequested { api, code: None, .. } => {
-            if app.state::<AppState>().host.lock().unwrap().is_some() {
-                api.prevent_exit();
-            }
+        RunEvent::ExitRequested { api, code: None, .. }
+            if app.state::<AppState>().host.lock().unwrap().is_some() =>
+        {
+            api.prevent_exit();
         }
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => open_main_window(app),

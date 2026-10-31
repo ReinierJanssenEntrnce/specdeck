@@ -40,7 +40,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     # Fewer parallel requests: the release-age check fetches metadata for every package, which
     # breaks on virtualised networks (Colima, some CI) at pnpm's default concurrency.
     pnpmInstallFlags = [ "--network-concurrency=4" ];
-    hash = lib.fakeHash;
+    hash = "sha256-LHa9h8GYI0jDmHcciWEDAUhQQCK39yMrHQ/in13itFA=";
   };
 
   nativeBuildInputs = [
