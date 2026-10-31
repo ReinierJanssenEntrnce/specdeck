@@ -182,6 +182,7 @@ export function ViewerScreen({ code, view, onView, onLeave }: Props) {
           mode="viewer"
           agentName={agentName}
           terminal={terminal}
+          steps={shown.steps}
           terminalHidden={!shown.terminal && state.timelineSupported}
           timelineSupported={state.timelineSupported}
           timeline={state.timeline}

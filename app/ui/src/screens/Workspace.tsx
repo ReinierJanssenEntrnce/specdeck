@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { ArrowDown } from 'lucide-react';
-import type { Participant, TimelineEvent } from '../api/types';
+import type { Participant, TimelineEvent, Steps } from '../api/types';
 import { FilesPanel } from '../components/FilesPanel';
 import { PeoplePanel } from '../components/PeoplePanel';
 import { SearchBar } from '../components/SearchBar';
@@ -26,6 +26,8 @@ interface Props {
   /** The viewer chose not to see the terminal. It keeps running out of sight, so it comes back at
    * once with everything it received. */
   terminalHidden?: boolean;
+  /** Steps in plain words, or every tool call in detail. */
+  steps?: Steps;
   timelineSupported: boolean;
   timeline: TimelineEvent[];
   participants: Participant[];
@@ -190,6 +192,8 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
           model={model}
           timelineSupported={props.timelineSupported}
           agentName={props.agentName}
+          steps={props.steps}
+          live={props.terminalHidden}
           terminal={props.terminal}
           matches={new Set(timelineMatches)}
           current={timelineIndex >= 0 ? (timelineMatches[timelineIndex] ?? null) : null}

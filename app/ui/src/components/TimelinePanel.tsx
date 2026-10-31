@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, CircleSlash, Hand, History, Loader, X } from 'lucide-react';
 import type { TimelineModel, ToolItem, Turn } from '../model/timeline';
 import { toolSummary } from '../model/timeline';
+import { liveLine, summarize, type Step, type SummaryEntry } from '../model/steps';
+import type { Steps } from '../api/types';
 import { DiffView } from './DiffView';
 import { formatTokens } from '../model/statusbar';
 import { Markdown } from './Markdown';
@@ -10,6 +12,10 @@ interface Props {
   model: TimelineModel;
   timelineSupported: boolean;
   agentName: string;
+  /** Steps in plain words, or every tool call in detail. */
+  steps?: Steps;
+  /** The terminal is hidden, so the panel says what the agent does right now. */
+  live?: boolean;
   /** A terminal session, which never has a timeline. */
   terminal?: boolean;
   /** Turns matching the current search, by prompt id. */
@@ -22,7 +28,18 @@ interface Props {
 
 const TIME = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 
-export function TimelinePanel({ model, timelineSupported, agentName, terminal = false, matches, current, onJump }: Props) {
+export function TimelinePanel({ model, timelineSupported, agentName, steps = 'details', live = false, terminal = false, matches, current, onJump }: Props) {
+  // Summaries per turn, in order: whether a plan was written or updated depends on earlier turns.
+  const summaries = useMemo(() => {
+    const seen = new Set<string>();
+    return model.turns.map((turn) => summarize(turn, seen));
+  }, [model]);
+  const lastTurn = model.turns.at(-1);
+  const plansBeforeLast = useMemo(() => {
+    const seen = new Set<string>();
+    model.turns.slice(0, -1).forEach((turn) => summarize(turn, seen));
+    return seen;
+  }, [model]);
   const list = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
 
@@ -111,19 +128,78 @@ export function TimelinePanel({ model, timelineSupported, agentName, terminal = 
             <TurnView
               key={turn.promptId}
               turn={turn}
+              summary={steps === 'summary' ? summaries[i]! : null}
               number={i + 1}
               match={matches.has(turn.promptId)}
               current={current === turn.promptId}
               onJump={onJump}
             />
           ))}
+          {live && lastTurn && <LiveLine turn={lastTurn} plansBefore={plansBeforeLast} agentName={agentName} />}
         </div>
       )}
     </div>
   );
 }
 
-function TurnView({ turn, number, match, current, onJump }: { turn: Turn; number: number; match: boolean; current: boolean; onJump: (seq: number) => void }) {
+/** What the agent does right now and for how long, for viewers without the terminal. */
+function LiveLine({ turn, plansBefore, agentName }: { turn: Turn; plansBefore: Set<string>; agentName: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const name = agentName === 'Claude Code' ? 'Claude' : agentName;
+  const text = liveLine(turn, plansBefore, name);
+  if (!text) return null;
+  const running = turn.items.findLast((item): item is ToolItem => item.kind === 'tool' && item.status === 'running');
+  const waiting = turn.items.at(-1)?.kind === 'notice';
+  const seconds = running && !waiting ? Math.max(0, Math.round((now - running.at) / 1000)) : null;
+  return (
+    <p className={`live-line${waiting ? ' waiting' : ''}`} role="status" aria-label={`What ${agentName} is doing`}>
+      <span className="dot" aria-hidden />
+      {text}
+      {seconds !== null && ` · ${seconds} s`}
+    </p>
+  );
+}
+
+const OUTCOME_ICON = { running: Loader, succeeded: Check, failed: X, 'not-run': CircleSlash } as const;
+
+/** One summary line; opens to the tool calls it stands for. */
+function StepView({ step, onJump }: { step: Step; onJump: (seq: number) => void }) {
+  const Icon = OUTCOME_ICON[step.outcome];
+  return (
+    <details className={`step ${step.outcome}`}>
+      <summary onClick={() => onJump(step.tools[0]!.outputSeq)}>
+        <Icon className="status-icon" aria-hidden />
+        <span className="what">{step.label}</span>
+        <span className="state">{STATUS_TEXT[step.outcome]}</span>
+      </summary>
+      <div className="step-body">
+        {step.tools.map((item) => (
+          <ToolView key={item.id} item={item} onJump={onJump} />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function TurnView({
+  turn,
+  summary,
+  number,
+  match,
+  current,
+  onJump,
+}: {
+  turn: Turn;
+  summary: SummaryEntry[] | null;
+  number: number;
+  match: boolean;
+  current: boolean;
+  onJump: (seq: number) => void;
+}) {
   const texts = turn.items.filter((item) => item.kind === 'text');
   const showResponse = turn.response && !texts.some((item) => item.text.trim() === turn.response?.trim());
   return (
@@ -138,8 +214,10 @@ function TurnView({ turn, number, match, current, onJump }: { turn: Turn; number
         </span>
         <span className="text selectable">{turn.prompt || 'Earlier prompt'}</span>
       </button>
-      {turn.items.map((item) =>
-        item.kind === 'text' ? (
+      {(summary ?? turn.items).map((item) =>
+        item.kind === 'step' ? (
+          <StepView key={item.id} step={item} onJump={onJump} />
+        ) : item.kind === 'text' ? (
           <Markdown key={item.id} text={item.text} />
         ) : item.kind === 'notice' ? (
           <p key={item.id} className="notice">

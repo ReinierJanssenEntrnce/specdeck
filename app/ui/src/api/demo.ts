@@ -104,7 +104,7 @@ export const demoTimeline: TimelineEvent[] = [
       },
     ],
   },
-  { ...at(3), kind: 'tool-call', promptId: 'p1', toolUseId: 't4', toolName: 'Bash', input: { command: 'npm test -- health' } },
+  { ...at(3), kind: 'tool-call', promptId: 'p1', toolUseId: 't4', toolName: 'Bash', input: { command: 'npm test -- health', description: 'Run the health tests' } },
   { ...at(3), kind: 'tool-result', promptId: 'p1', toolUseId: 't4', status: 'failed', error: 'Exit code 1: no test files match "health"' },
   {
     ...at(3),
@@ -115,7 +115,7 @@ export const demoTimeline: TimelineEvent[] = [
   { ...at(3), kind: 'usage', tokens: { input: 14, output: 2310, cacheRead: 96400, cacheWrite: 21800 }, contextTokens: 24180, contextWindow: 200_000 },
   { ...at(4), kind: 'prompt', promptId: 'p2', text: 'Yes, add a test with a stubbed database.' },
   { ...at(4), kind: 'message', promptId: 'p2', messageId: 'm2', text: 'Writing a test that stubs `db.ping` for both cases.', final: false },
-  { ...at(4), kind: 'tool-call', promptId: 'p2', toolUseId: 't5', toolName: 'Bash', input: { command: 'npm test -- health' } },
+  { ...at(4), kind: 'tool-call', promptId: 'p2', toolUseId: 't5', toolName: 'Bash', input: { command: 'npm test -- health', description: 'Run the health tests again' } },
   { ...at(4), kind: 'usage', tokens: { input: 19, output: 2890, cacheRead: 148200, cacheWrite: 26500 }, contextTokens: 151320, contextWindow: 200_000 },
 ];
 

@@ -31,6 +31,8 @@ export interface ToolItem {
   error?: string;
   changes: FileChange[];
   outputSeq: number;
+  /** When the call started, in milliseconds since the epoch. */
+  at: number;
 }
 
 /** The agent waited for the host here, for example to allow a tool. */
@@ -136,6 +138,7 @@ export function buildTimeline(events: TimelineEvent[]): TimelineModel {
           status: 'running',
           changes: [],
           outputSeq: event.outputSeq,
+          at: event.at,
         };
         tools.set(event.toolUseId, item);
         turnFor(event.promptId, event.at, event.outputSeq).items.push(item);

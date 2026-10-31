@@ -15,8 +15,8 @@
 
 ## 3. Conversation
 
-- [ ] 3.1 Implement summary steps (decision 6) as a pure model function; verify with unit tests for each rule: Bash with and without description, grouped reads and changes, plan written vs updated, subagent, other tools, failed and running outcomes
-- [ ] 3.2 Show the conversation layout with summary or detail steps, steps that open to their detail, and the live line (running step with elapsed time, or the attention message); verify with UI tests on a timeline fixture for both settings and the live line in both cases
+- [x] 3.1 Implement summary steps (decision 6) as a pure model function; verify with unit tests for each rule: Bash with and without description, grouped reads and changes, plan written vs updated, subagent, other tools, failed and running outcomes
+- [x] 3.2 Show the conversation layout with summary or detail steps, steps that open to their detail, and the live line (running step with elapsed time, or the attention message); verify with UI tests on a timeline fixture for both settings and the live line in both cases
 
 ## 4. Plans and documents
 

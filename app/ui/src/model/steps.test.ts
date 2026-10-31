@@ -1,0 +1,111 @@
+import { describe, expect, it } from 'vitest';
+import { liveLine, planChangeOf, summarize, type Step } from './steps';
+import type { FileChange, ToolItem, ToolStatus, Turn } from './timeline';
+
+let n = 0;
+function tool(toolName: string, input: Record<string, unknown>, status: ToolStatus = 'succeeded', changes: FileChange[] = []): ToolItem {
+  n += 1;
+  return { kind: 'tool', id: `t${n}`, toolName, input, status, changes, outputSeq: n, at: n };
+}
+
+function change(path: string, kind: FileChange['change'] = 'edited'): FileChange {
+  return { path, change: kind, hunks: [], promptId: 'p', toolUseId: 't', at: 0, outputSeq: 0 };
+}
+
+function turn(items: Turn['items']): Turn {
+  return { promptId: 'p', prompt: 'do it', at: 0, outputSeq: 0, items, response: null, tokens: null };
+}
+
+const steps = (items: Turn['items'], seenChanges = new Set<string>()) =>
+  summarize(turn(items), seenChanges).filter((entry): entry is Step => entry.kind === 'step');
+
+describe('summary steps', () => {
+  it('describes a command by what Claude said it does, in the past tense once done', () => {
+    const [done, failed, running, odd] = steps([
+      tool('Bash', { command: 'npm test', description: 'Run the test suite' }),
+      tool('Bash', { command: 'npm test', description: 'Run the test suite' }, 'failed'),
+      tool('Bash', { command: 'git rev-parse HEAD', description: 'Check the current commit' }, 'running'),
+      tool('Bash', { command: 'x', description: 'Frobnicate the widgets' }),
+    ]);
+    expect([done!.label, done!.outcome]).toEqual(['Ran the test suite', 'succeeded']);
+    expect([failed!.label, failed!.outcome]).toEqual(['Ran the test suite', 'failed']);
+    expect([running!.label, running!.live]).toEqual(['Checking the current commit', 'checking the current commit']);
+    expect(odd!.label).toBe('Frobnicate the widgets');
+  });
+
+  it('says a command ran when it has no description, and keeps the command for its detail', () => {
+    const [step] = steps([tool('Bash', { command: 'make' })]);
+    expect(step!.label).toBe('Ran a command');
+    expect(step!.tools[0]!.input.command).toBe('make');
+  });
+
+  it('groups reads and searches, and file changes', () => {
+    const result = steps([
+      tool('Read', { file_path: '/w/a.ts' }),
+      tool('Read', { file_path: '/w/b.ts' }),
+      tool('Read', { file_path: '/w/a.ts' }),
+      tool('Grep', { pattern: 'health' }),
+      tool('Edit', { file_path: '/w/a.ts' }, 'succeeded', [change('a.ts')]),
+      tool('Write', { file_path: '/w/c.ts' }, 'failed', [change('c.ts', 'created')]),
+      tool('Read', { file_path: '/w/d.ts' }),
+    ]);
+    expect(result.map((s) => [s.label, s.outcome])).toEqual([
+      ['Looked at 2 files and searched the code', 'succeeded'],
+      ['Changed 2 files', 'failed'],
+      ['Looked at 1 file', 'succeeded'],
+    ]);
+    expect(result[1]!.tools).toHaveLength(2);
+  });
+
+  it('calls changes to an OpenSpec change writing or updating the plan', () => {
+    const plan = (file: string) => tool('Write', { file_path: `/w/openspec/changes/demo/${file}` }, 'succeeded', [change(`openspec/changes/demo/${file}`, 'created')]);
+    const seen = new Set<string>();
+    const first = steps([plan('proposal.md'), plan('tasks.md')], seen);
+    expect(first.map((s) => [s.label, s.plan])).toEqual([['Wrote the plan', 'demo']]);
+    const later = steps([plan('design.md')], seen);
+    expect(later.map((s) => s.label)).toEqual(['Updated the plan']);
+  });
+
+  it('names subagents, questions, to-do lists and other tools', () => {
+    expect(
+      steps([
+        tool('Task', { description: 'Review the API changes' }),
+        tool('AskUserQuestion', { questions: [{ question: 'Which database?' }] }),
+        tool('TodoWrite', { todos: [] }),
+        tool('WebFetch', { url: 'https://example.com' }),
+      ]).map((s) => s.label),
+    ).toEqual(['Asked a helper: Review the API changes', 'Asked: Which database?', 'Updated its to-do list', 'Used WebFetch']);
+  });
+
+  it('keeps the agent text and waiting notices between the steps', () => {
+    const entries = summarize(
+      turn([
+        { kind: 'text', id: 'm1', text: 'Let me look.', outputSeq: 1 },
+        tool('Read', { file_path: '/w/a.ts' }),
+        { kind: 'notice', id: 'n1', text: 'Claude needs your permission to use Bash', outputSeq: 2 },
+      ]),
+      new Set(),
+    );
+    expect(entries.map((e) => e.kind)).toEqual(['text', 'step', 'notice']);
+  });
+});
+
+describe('live line', () => {
+  it('says what the running step does, or what the agent waits for', () => {
+    const running = turn([tool('Bash', { description: 'Run the test suite' }, 'running')]);
+    expect(liveLine(running, new Set(), 'Claude')).toBe('Claude is running the test suite');
+    const waiting = turn([tool('Bash', { description: 'Run it' }, 'running'), { kind: 'notice', id: 'n', text: 'Claude needs your permission to use Bash', outputSeq: 9 }]);
+    expect(liveLine(waiting, new Set(), 'Claude')).toBe('Waiting for the host: Claude needs your permission to use Bash');
+    expect(liveLine(turn([tool('Read', { file_path: '/a' }, 'running')]), new Set(), 'Claude')).toBe('Claude is looking at 1 file');
+    expect(liveLine(turn([tool('Read', { file_path: '/a' })]), new Set(), 'Claude')).toBeNull();
+  });
+});
+
+describe('plan files', () => {
+  it('belong to a change unless archived', () => {
+    expect(planChangeOf('openspec/changes/viewer-views/specs/a/spec.md')).toBe('viewer-views');
+    expect(planChangeOf('/repo/openspec/changes/demo/tasks.md')).toBe('demo');
+    expect(planChangeOf('openspec/changes/archive/2026-10-31-x/tasks.md')).toBeNull();
+    expect(planChangeOf('openspec/specs/a/spec.md')).toBeNull();
+  });
+});

@@ -75,6 +75,40 @@ describe('timeline panel', () => {
   });
 });
 
+describe('summary steps', () => {
+  it('shows what the agent did in words, each step opening to its detail', async () => {
+    renderWorkspace({ steps: 'summary' });
+    const first = screen.getByRole('article', { name: 'Prompt 1' });
+    const lines = [...first.querySelectorAll('.step > summary')].map((summary) => summary.textContent);
+    expect(lines).toEqual(['Looked at 1 fileDone', 'Changed 2 filesDone', 'Ran the health testsFailed']);
+    expect(within(first).queryByLabelText('Created src/routes/health.ts')).not.toBeVisible();
+    await userEvent.click(within(first).getByText('Changed 2 files'));
+    expect(within(first).getByLabelText('Created src/routes/health.ts')).toBeVisible();
+  });
+
+  it('says what the agent does right now when the terminal is hidden', () => {
+    const { rerender } = renderWorkspace({ steps: 'summary', terminalHidden: true });
+    expect(screen.getByRole('status', { name: 'What Claude Code is doing' })).toHaveTextContent(/^Claude is running the health tests again · \d+ s$/);
+    rerender(
+      <Workspace
+        mode="viewer"
+        agentName="Claude Code"
+        timelineSupported
+        timeline={[...demoTimeline, { outputSeq: 99, at: 99, kind: 'attention', message: 'Claude needs your permission to use Bash' }]}
+        participants={demoParticipants}
+        steps="summary"
+        terminalHidden
+      />,
+    );
+    expect(screen.getByRole('status', { name: 'What Claude Code is doing' })).toHaveTextContent('Waiting for the host: Claude needs your permission to use Bash');
+  });
+
+  it('has no live line while the terminal shows what happens', () => {
+    renderWorkspace({ steps: 'summary' });
+    expect(screen.queryByRole('status', { name: 'What Claude Code is doing' })).not.toBeInTheDocument();
+  });
+});
+
 describe('hidden terminal', () => {
   it('keeps receiving output while hidden and comes back without a remount', () => {
     const ref = createRef<WorkspaceHandle>();

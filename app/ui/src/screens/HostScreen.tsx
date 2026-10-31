@@ -168,6 +168,7 @@ export function HostScreen({ view, onView, onEnded }: Props) {
         mode="host"
         agentName={agentName}
         terminal={terminal}
+        steps={(view ?? DEVELOPER_VIEW).steps}
         timelineSupported={state.timelineSupported}
         timeline={state.timeline}
         participants={state.participants}
