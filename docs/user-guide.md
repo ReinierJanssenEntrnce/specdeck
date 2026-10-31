@@ -71,7 +71,39 @@ If SpecDeck's sharing service cannot be reached, the session still runs on your 
 
 If you are watching another session, SpecDeck asks before it leaves that one. If a link does not work, SpecDeck says so on the start screen.
 
-You see the host's terminal, read-only, and the side panel. **Leave** takes you back to the start screen.
+The first time you join, SpecDeck asks how you want to follow sessions:
+
+- **Overview:** the conversation and the plan. You see what was asked, what the agent did in plain words, its answers, and the documents it wrote. The terminal is hidden.
+- **Developer:** the host's terminal, read-only, next to every tool call, command and diff.
+
+SpecDeck remembers your answer for every session you join. **Leave** takes you back to the start screen.
+
+## Follow a session your way
+
+Select **View** at the top of the session to change how you follow it. Your choice is remembered, and nobody else's view changes.
+
+| Setting | What it does |
+|---|---|
+| **Show terminal** | Shows or hides the host's terminal. Hidden, it keeps running out of sight, so it comes back at once with everything that happened |
+| **Steps: Summary** | Each thing the agent did as one line in plain words, such as *Ran the test suite* (in the agent's own words), *Looked at 3 files*, *Changed 2 files* or *Updated the plan*, marked as done, failed or running. Select a line to see the commands, files and diffs behind it |
+| **Steps: Details** | Every tool call with its input and outcome, and the diffs of changed files |
+| **Show the first-join question again** | Asks how you want to follow sessions once more |
+
+With the terminal hidden, a line at the bottom of the conversation says what the agent is doing right now and for how long, such as *Claude is running the test suite · 12 s*, or what it is waiting for when it needs the host.
+
+The host's terminal is always shown, because the host types into it; the host can still choose summary or details for the steps. Sessions with OpenCode, omp or a plain terminal have no steps to show, so the terminal stays shown there, with a note why.
+
+## Documents and plans
+
+When the agent writes or changes a Markdown file, everyone can read the whole document, not only its diff:
+
+- In **Files**, select the file and then **Read the document**.
+- When the agent works on an **OpenSpec change**, a **plan** card appears at the top of the **Timeline**. It shows the change's title and name, a button for each of its documents in the order of the change's schema, so your team's own steps (such as a feature brief) show up too, and how many tasks are done. The task count follows along live while the agent works through the tasks.
+- A summary step that wrote or updated the plan offers **Read the plan** or **Read the changes**.
+
+The reader marks the parts of a document that changed since you last read it as **New** or **Changed**; turn **Highlight changes since you last read it** off to read without the marks. A document you open for the first time has no marks. Very large documents (over 200 KB) cannot be shown whole; the reader shows their changes instead.
+
+Plan cards come from the OpenSpec CLI on the host's computer. Without it, SpecDeck recognises OpenSpec's default layout (proposal, specs, design and tasks).
 
 If joining does not work, SpecDeck says why:
 
