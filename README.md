@@ -16,6 +16,8 @@ How to use the app: [docs/user-guide.md](docs/user-guide.md). Status: in develop
 
 With Nix, add it to a system or home configuration through the flake's `packages.<system>.specdeck` or `overlays.default`. Builds from source use the sharing service set at build time; override it with `specdeck.override { signallingUrl = "wss://…/signal"; }`, or set `SPECDECK_SIGNALLING_URL` when starting the app.
 
+Releases built before the signing certificates are in place are unsigned, so the system warns on first launch. On macOS, allow SpecDeck once under System Settings > Privacy & Security (Open Anyway), or run `xattr -dr com.apple.quarantine /Applications/SpecDeck.app`; the Homebrew cask says the same when it installs an unsigned release. On Windows, choose More info > Run anyway in the SmartScreen prompt.
+
 SpecDeck 1.x replaces 0.x under the same names: `brew upgrade` and flake updates move 0.x installs to 1.x, which cannot join 0.x sessions, so a team switches together.
 
 ## Repository layout
@@ -70,7 +72,7 @@ It also builds the Nix flake.
 
 ## Releases
 
-Push a tag that matches the version in `Cargo.toml` and `app/src-tauri/tauri.conf.json`, for example `v1.0.0`. [`release.yml`](.github/workflows/release.yml) builds the installers on each platform, uploads them to a GitHub release under stable names (`SpecDeck-arm64.dmg`, `SpecDeck-x64.dmg`, `SpecDeck-x64-setup.exe`, `SpecDeck-x86_64.AppImage`, `SpecDeck-amd64.deb`), publishes it, and has [`homebrew.yml`](.github/workflows/homebrew.yml) update the cask in `nickhartjes/homebrew-tap` ([`scripts/render-cask.sh`](scripts/render-cask.sh)). The Nix flake follows the repository, so it needs nothing per release. The secrets for the sharing service URL, signing and the tap are listed at the top of `release.yml`; without them the installers are unsigned (ad-hoc on macOS) and the cask is not updated.
+Push a tag that matches the version in `Cargo.toml` and `app/src-tauri/tauri.conf.json`, for example `v1.0.0`. [`release.yml`](.github/workflows/release.yml) builds the installers on each platform, uploads them to a GitHub release under stable names (`SpecDeck-arm64.dmg`, `SpecDeck-x64.dmg`, `SpecDeck-x64-setup.exe`, `SpecDeck-x86_64.AppImage`, `SpecDeck-amd64.deb`), publishes it, and has [`homebrew.yml`](.github/workflows/homebrew.yml) update the cask in `nickhartjes/homebrew-tap` ([`scripts/render-cask.sh`](scripts/render-cask.sh)). The Nix flake follows the repository, so it needs nothing per release. The secrets for the sharing service URL, signing and the tap are listed at the top of `release.yml`. Without the signing secrets the installers are unsigned (ad-hoc on macOS) and the cask explains how to open the app; without the tap deploy key the cask is not updated.
 
 ## License
 
