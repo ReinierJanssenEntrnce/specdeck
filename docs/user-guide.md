@@ -44,6 +44,8 @@ While you host:
 
 The status next to the folder name shows what the agent is doing: **working**, **waiting for input**, or **exited**. For OpenCode and omp it shows **Live**, because their activity is not shared.
 
+If you set up your own Claude Code status line, it keeps showing in the terminal. SpecDeck reads the same figures from it for the bar at the bottom of the window, which everyone in the session sees, including your 5-hour and 7-day limits.
+
 **Closing the window does not end the session.** The agent keeps running and viewers stay connected. On macOS, click SpecDeck in the Dock to bring the window back; it shows the whole session again.
 
 If SpecDeck's sharing service cannot be reached, the session still runs on your computer. A banner says that sharing is unavailable, and the invite code appears as soon as the service is back.
@@ -79,6 +81,6 @@ If your connection drops, SpecDeck reconnects on its own and catches up; you do 
 | See which files changed | Open **Files**. Select a changed file to see all its diffs in order |
 | Copy | Select text in the terminal, the timeline or a diff and copy it as usual. Copying never sends anything to the session |
 | Make the side panel wider or narrower | Drag the line between the terminal and the side panel |
-| See how much the agent has used | For Claude Code, the toolbar shows how full its context window is and the tokens used in the session; hover over it for the details. Each prompt in the **Timeline** shows the tokens it used. Most of the total is context the agent reads again from its cache on every call. OpenCode and omp do not report usage |
+| See what the agent works with and has used | Look at the bar at the bottom of the window: the folder, its git branch (● means uncommitted changes, ↑↓ commits ahead of and behind its upstream) and, for Claude Code, the model and effort, how full the context window is, the tokens used in the session, and the host's 5-hour and 7-day limits with the time until they reset. Hover over a figure for details. Each prompt in the **Timeline** shows the tokens it used. Most of the token total is context the agent reads again from its cache on every call |
 
 What you scroll, search or open only changes your own view.

@@ -45,10 +45,6 @@ export interface Turn {
   tokens: number | null;
 }
 
-/** The session's token usage, as the agent last reported it. */
-export type Usage =
-  | { available: true; tokens: TokenCounts; total: number; contextTokens?: number; contextWindow?: number }
-  | { available: false; reason: string };
 
 export interface TouchedFile {
   path: string;
@@ -62,8 +58,6 @@ export interface TimelineModel {
   files: TouchedFile[];
   /** Why the timeline is unavailable right now, or null. */
   unavailable: string | null;
-  /** Null until the agent reports usage, and for agents without a timeline. */
-  usage: Usage | null;
 }
 
 export function totalTokens(tokens: TokenCounts): number {
@@ -77,7 +71,6 @@ export function buildTimeline(events: TimelineEvent[]): TimelineModel {
   const texts = new Map<string, TextItem>();
   const files = new Map<string, TouchedFile>();
   let unavailable: string | null = null;
-  let usage: Usage | null = null;
   // The session total when each turn started; a turn's tokens are what was added since.
   let sessionTotal = 0;
   const startTotals = new Map<Turn, number>();
@@ -175,14 +168,14 @@ export function buildTimeline(events: TimelineEvent[]): TimelineModel {
         break;
       case 'usage': {
         const total = totalTokens(event.tokens);
-        usage = { available: true, tokens: event.tokens, total, contextTokens: event.contextTokens, contextWindow: event.contextWindow };
         sessionTotal = total;
         const turn = turns.at(-1);
         if (turn) turn.tokens = total - (startTotals.get(turn) ?? total);
         break;
       }
       case 'usage-unavailable':
-        usage = { available: false, reason: event.reason };
+      case 'status-line':
+      case 'git':
         break;
       case 'session-started':
       case 'session-ended':
@@ -194,19 +187,7 @@ export function buildTimeline(events: TimelineEvent[]): TimelineModel {
   const sorted = [...files.values()].sort(
     (a, b) => Number(a.readOnly) - Number(b.readOnly) || a.path.localeCompare(b.path),
   );
-  return { turns, files: sorted, unavailable, usage };
-}
-
-/** The usage the latest usage entry reports, without building the whole timeline. */
-export function latestUsage(events: TimelineEvent[]): Usage | null {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const event = events[i];
-    if (event?.kind === 'usage') {
-      return { available: true, tokens: event.tokens, total: totalTokens(event.tokens), contextTokens: event.contextTokens, contextWindow: event.contextWindow };
-    }
-    if (event?.kind === 'usage-unavailable') return { available: false, reason: event.reason };
-  }
-  return null;
+  return { turns, files: sorted, unavailable };
 }
 
 /** A short line describing what a tool call does, for its timeline entry. */

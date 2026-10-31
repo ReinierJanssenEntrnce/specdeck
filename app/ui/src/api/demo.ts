@@ -35,6 +35,18 @@ const at = (minutes: number) => ({ outputSeq: seq++, at: t0 + minutes * 60_000 }
 
 export const demoTimeline: TimelineEvent[] = [
   { ...at(0), kind: 'session-started' },
+  { ...at(0), kind: 'git', folder: 'webshop', branch: 'feature/SHOP-412_health-endpoint', dirty: true, ahead: 2, behind: 0 },
+  {
+    ...at(4),
+    kind: 'status-line',
+    model: 'Opus 5.5',
+    contextWindow: 1_000_000,
+    contextTokens: 178_200,
+    effort: 'medium',
+    fast: false,
+    fiveHour: { usedPercent: 23, resetsAt: Math.floor(Date.now() / 1000) + 2 * 3600 + 14 * 60 },
+    sevenDay: { usedPercent: 41, resetsAt: Math.floor(Date.now() / 1000) + 3 * 86_400 + 2 * 3600 },
+  },
   { ...at(1), kind: 'prompt', promptId: 'p1', text: 'Add a /health endpoint to the API that reports the database status.' },
   { ...at(1), kind: 'message', promptId: 'p1', messageId: 'm1', text: "I'll look at how the routes are set up first.", final: true },
   { ...at(1), kind: 'tool-call', promptId: 'p1', toolUseId: 't1', toolName: 'Read', input: { file_path: 'src/routes/index.ts' } },

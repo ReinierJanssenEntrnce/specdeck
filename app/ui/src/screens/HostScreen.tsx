@@ -4,8 +4,8 @@ import { errorMessage, useBridge } from '../api/bridge';
 import type { AgentId, AgentStatus, HostEvent, Participant, SharingState, TimelineEvent } from '../api/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { StatusPill } from '../components/StatusPill';
-import { UsageMeter } from '../components/UsageMeter';
-import { latestUsage } from '../model/timeline';
+import { StatusBar } from '../components/StatusBar';
+import { statusBarInfo } from '../model/statusbar';
 import { Toast, useToast } from '../components/Toast';
 import { formatCode, joinLink } from '../model/code';
 import { Workspace, type WorkspaceHandle } from './Workspace';
@@ -81,7 +81,7 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
   const onThemeColors = useCallback((fg: string, bg: string) => void bridge.hostSetColors(fg, bg).catch(() => {}), [bridge]);
 
   const agentName = state.agent ? AGENT_NAMES[state.agent] : 'Agent';
-  const usage = useMemo(() => latestUsage(state.timeline), [state.timeline]);
+  const statusBar = useMemo(() => statusBarInfo(state.timeline, state.timelineSupported), [state.timeline, state.timelineSupported]);
   const folderName = state.folder.split(/[\\/]/).filter(Boolean).at(-1) ?? state.folder;
   const viewers = state.participants.filter((p) => p.role === 'Viewer').length;
 
@@ -110,7 +110,6 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
           </span>
         </div>
         <StatusPill status={state.status} agentName={agentName} />
-        {state.timelineSupported && <UsageMeter usage={usage} />}
         <div className="spacer" />
         <InviteCode
           sharing={state.sharing}
@@ -160,6 +159,7 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
           void bridge.hostSetViewerLimit(limit);
         }}
       />
+      <StatusBar info={statusBar} folder={folderName || undefined} />
       {confirmEnd && (
         <ConfirmDialog title="End the session for everyone?" confirm="End session" danger onConfirm={end} onCancel={() => setConfirmEnd(false)}>
           <p>

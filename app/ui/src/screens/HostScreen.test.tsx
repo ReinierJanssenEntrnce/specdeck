@@ -20,7 +20,7 @@ async function setup(overrides: Partial<Bridge> = {}) {
   });
   const onEnded = vi.fn();
   renderWith(bridge, <HostScreen onEnded={onEnded} />);
-  await screen.findByText('webshop');
+  await within(screen.getByRole('banner')).findByText('webshop');
   return { bridge, onEnded };
 }
 

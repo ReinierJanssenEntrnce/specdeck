@@ -94,7 +94,7 @@ describe('viewer screen', () => {
     await waitFor(() => expect(onLeave).toHaveBeenCalledWith());
   });
 
-  it('shows the session usage to viewers', () => {
+  it('shows the session usage to viewers in the status bar', () => {
     setup();
     join();
     act(() =>
@@ -112,6 +112,7 @@ describe('viewer screen', () => {
       emit({ type: 'joined', viewerId: 2, agent: 'open-code', timelineSupported: false, cols: 100, rows: 30 });
       emit({ type: 'timeline', event: { outputSeq: 0, at: 1, kind: 'usage', tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } } });
     });
+    expect(screen.queryByRole('meter')).toBeNull();
     expect(screen.queryByText(/tokens/)).toBeNull();
   });
 });

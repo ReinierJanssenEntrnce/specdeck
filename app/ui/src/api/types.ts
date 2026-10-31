@@ -41,6 +41,13 @@ export interface DiffHunk {
 
 type Stamp = { outputSeq: number; at: number };
 
+/** Use of one of the host account's rate-limit windows. */
+export interface RateLimit {
+  usedPercent: number;
+  /** Seconds since the Unix epoch. */
+  resetsAt?: number;
+}
+
 /** Tokens used in a session, summed over every model call, subagents included. */
 export interface TokenCounts {
   input: number;
@@ -64,6 +71,17 @@ export type TimelineEvent = Stamp &
     | { kind: 'timeline-available' }
     | { kind: 'usage'; tokens: TokenCounts; contextTokens?: number; contextWindow?: number }
     | { kind: 'usage-unavailable'; reason: string }
+    | {
+        kind: 'status-line';
+        model?: string;
+        contextWindow?: number;
+        contextTokens?: number;
+        effort?: string;
+        fast: boolean;
+        fiveHour?: RateLimit;
+        sevenDay?: RateLimit;
+      }
+    | { kind: 'git'; folder: string; branch?: string; dirty: boolean; ahead: number; behind: number; worktree?: string }
   );
 
 export type SharingState = 'connecting' | 'ready' | 'unavailable';

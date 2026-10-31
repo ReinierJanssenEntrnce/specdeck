@@ -3,7 +3,7 @@ import { AlertTriangle, Check, CircleSlash, History, Loader, X } from 'lucide-re
 import type { TimelineModel, ToolItem, Turn } from '../model/timeline';
 import { toolSummary } from '../model/timeline';
 import { DiffView } from './DiffView';
-import { formatTokens } from './UsageMeter';
+import { formatTokens } from '../model/statusbar';
 import { Markdown } from './Markdown';
 
 interface Props {
