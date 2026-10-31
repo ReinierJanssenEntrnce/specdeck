@@ -1,5 +1,9 @@
 # SpecDeck
 
+[![CI](https://github.com/nickhartjes/specdeck/actions/workflows/ci.yml/badge.svg)](https://github.com/nickhartjes/specdeck/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/nickhartjes/specdeck)](https://github.com/nickhartjes/specdeck/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 SpecDeck lets one person (the **host**) run a coding agent (Claude Code, OpenCode or omp) on their computer while teammates (the **viewers**) follow along from anywhere. Viewers see the terminal and, for Claude Code, a timeline of prompts, answers, tool calls and file diffs. They join with an invite code and are read-only: only the host types into the agent, on the host's own login.
 
 This is SpecDeck 1.x, a native rewrite of the Electron app (0.x, in `../claude-share`) on Tauri 2 with a Rust session engine. 1.x and 0.x cannot join each other's sessions.
