@@ -4,11 +4,11 @@ Carried over from the archived `native-shared-session-mvp` (its task number in b
 
 ## 1. GitHub, CI and releases
 
-- [ ] 1.1 [1.5] Push the repository to GitHub and get `ci.yml` green: `just check` and `just package` on macOS, Windows and Ubuntu, failing when an installer exceeds 25 MB, including the libdatachannel build on Windows
+- [x] 1.1 [1.5] Push the repository to GitHub and get `ci.yml` green: `just check` and `just package` on macOS, Windows and Ubuntu, failing when an installer exceeds 25 MB, including the libdatachannel build on Windows
 - [ ] 1.2 [8.6] Fill in the pnpm dependency hash in `nix/package.nix` from the first CI run of the Nix job; verify `nix build` and `nix run` on x86_64-linux in CI and on aarch64-linux in a local container, and that the binary starts
 - [ ] 1.3 [8.4] Verify `release.yml` with a test tag (on a fork or as a prerelease): tag check against the app version, draft release, matrix builds uploaded under stable names, signing and notarization when secrets exist, publish when all uploaded; and that the asset names match what the cask and docs use
 - [ ] 1.4 [8.1] Verify the installers per platform (`.dmg` arm64 and x64, NSIS `.exe`, AppImage and `.deb`) with the `specdeck://` scheme registered: each installs and launches on a clean machine
-- [ ] 1.5 Give the size check a separate AppImage limit of 100 MB (installers that use the system's web engine stay at 25 MB) in `scripts/check-installer-size.sh`, `ci.yml` and `release.yml`; verify that the script passes and fails at both limits, and that the Ubuntu CI job passes
+- [x] 1.5 Give the size check a separate AppImage limit of 100 MB (installers that use the system's web engine stay at 25 MB) in `scripts/check-installer-size.sh`, `ci.yml` and `release.yml`; verify that the script passes and fails at both limits, and that the Ubuntu CI job passes
 
 ## 2. Measurements
 
