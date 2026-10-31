@@ -14,7 +14,7 @@ use specdeck_core::output_log::Record;
 use specdeck_core::peer::PeerConfig;
 use specdeck_core::session::{HostConfig, HostSession, SessionEvent};
 use specdeck_core::sharing::{MAX_VIEWERS, Sharing, SharingConfig, SharingEvent};
-use specdeck_protocol::control::Participant;
+use specdeck_protocol::control::{Participant, Role};
 use specdeck_protocol::timeline::TimelineEvent;
 use specdeck_protocol::{AgentId, AgentStatus};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -64,6 +64,18 @@ pub enum HostEvent {
     },
 }
 
+/// What the tray shows of the session; sent whenever one of these changes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Summary {
+    pub status: AgentStatus,
+    pub viewers: usize,
+    pub code: Option<String>,
+    pub sharing: SharingState,
+}
+
+/// Hears about changes the app shows outside the window.
+pub type Observer = Arc<dyn Fn(Summary) + Send + Sync>;
+
 /// The window's view of the session, kept while no window is attached.
 struct Ui {
     sharing: SharingState,
@@ -71,15 +83,49 @@ struct Ui {
     participants: Vec<Participant>,
     viewer_limit: u8,
     exited: Option<u32>,
+    status: AgentStatus,
     events: Option<Channel<HostEvent>>,
+    observer: Observer,
+    last_summary: Option<Summary>,
 }
 
 impl Ui {
+    /// What to tell the observer, if what it shows changed. Call the observer after releasing the
+    /// lock: updating the tray waits for the main thread, which may be waiting for this lock.
+    #[must_use]
+    fn observe(&mut self) -> Option<Notice> {
+        let summary = Summary {
+            status: self.status,
+            viewers: self.participants.iter().filter(|p| p.role == Role::Viewer).count(),
+            code: self.code.clone(),
+            sharing: self.sharing,
+        };
+        if self.last_summary.as_ref() == Some(&summary) {
+            return None;
+        }
+        self.last_summary = Some(summary.clone());
+        Some(Notice { observer: self.observer.clone(), summary })
+    }
+
     fn send(&mut self, event: HostEvent) {
         if let Some(events) = &self.events
             && events.send(event).is_err()
         {
             self.events = None;
+        }
+    }
+}
+
+/// A change for the observer, told once the lock is released.
+struct Notice {
+    observer: Observer,
+    summary: Summary,
+}
+
+impl Notice {
+    fn tell(notice: Option<Self>) {
+        if let Some(notice) = notice {
+            (notice.observer)(notice.summary);
         }
     }
 }
@@ -106,7 +152,11 @@ pub struct StartOptions {
 }
 
 impl HostRuntime {
-    pub async fn start(options: StartOptions, env: &Environment) -> Result<Self, String> {
+    pub async fn start(
+        options: StartOptions,
+        env: &Environment,
+        observer: Observer,
+    ) -> Result<Self, String> {
         let config = HostConfig {
             agent: options.agent,
             folder: options.folder.clone(),
@@ -131,15 +181,27 @@ impl HostRuntime {
             participants: Vec::new(),
             viewer_limit: MAX_VIEWERS,
             exited: None,
+            status: session.status(),
             events: None,
+            observer,
+            last_summary: None,
         }));
+        let notice = ui.lock().unwrap().observe();
+        Notice::tell(notice);
 
         let shared = ui.clone();
         tokio::spawn(async move {
             loop {
                 tokio::select! {
                     event = session_events.recv() => match event {
-                        Some(SessionEvent::Status(status)) => shared.lock().unwrap().send(HostEvent::Status { status }),
+                        Some(SessionEvent::Status(status)) => {
+                            let mut ui = shared.lock().unwrap();
+                            ui.status = status;
+                            ui.send(HostEvent::Status { status });
+                            let notice = ui.observe();
+                            drop(ui);
+                            Notice::tell(notice);
+                        }
                         Some(SessionEvent::Timeline(event)) => shared.lock().unwrap().send(HostEvent::Timeline { event }),
                         Some(SessionEvent::Exited { code }) => {
                             let mut ui = shared.lock().unwrap();
@@ -156,17 +218,26 @@ impl HostRuntime {
                             ui.code = Some(code.to_string());
                             let code = ui.code.clone();
                             ui.send(HostEvent::Sharing { state: SharingState::Ready, code });
+                            let notice = ui.observe();
+                            drop(ui);
+                            Notice::tell(notice);
                         }
                         Some(SharingEvent::Unavailable) => {
                             let mut ui = shared.lock().unwrap();
                             ui.sharing = SharingState::Unavailable;
                             let code = ui.code.clone();
                             ui.send(HostEvent::Sharing { state: SharingState::Unavailable, code });
+                            let notice = ui.observe();
+                            drop(ui);
+                            Notice::tell(notice);
                         }
                         Some(SharingEvent::Participants(participants)) => {
                             let mut ui = shared.lock().unwrap();
                             ui.participants = participants.clone();
                             ui.send(HostEvent::Participants { participants });
+                            let notice = ui.observe();
+                            drop(ui);
+                            Notice::tell(notice);
                         }
                         None => break,
                     },
@@ -258,9 +329,17 @@ impl HostRuntime {
     pub fn new_code(&self) {
         let mut ui = self.ui.lock().unwrap();
         ui.sharing = SharingState::Connecting;
+        ui.code = None;
         ui.send(HostEvent::Sharing { state: SharingState::Connecting, code: None });
+        let notice = ui.observe();
         drop(ui);
+        Notice::tell(notice);
         self.sharing.new_code();
+    }
+
+    /// The current invite code, `7K2M-9QXH-4TPA`, once sharing is ready.
+    pub fn code(&self) -> Option<String> {
+        self.ui.lock().unwrap().code.clone()
     }
 
     pub fn remove_viewer(&self, viewer_id: u32) {

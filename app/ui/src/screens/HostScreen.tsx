@@ -96,6 +96,8 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
   };
 
   useMenu((command) => {
+    // Ended from the menu-bar or tray icon.
+    if (command.id === 'session-ended') return onEnded();
     if (command.id === 'copy-code') {
       if (state.code) void copy(formatCode(state.code), 'Invite code copied');
       else showToast('The invite code is not ready yet.');

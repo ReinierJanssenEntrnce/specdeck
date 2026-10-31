@@ -75,6 +75,12 @@ describe('menu commands', () => {
     await waitFor(() => expect(bridge.copyText).toHaveBeenCalledWith('7K2M-9QXH-4TPA'));
   });
 
+  it('goes back to the start screen when the session is ended from the tray', async () => {
+    await setup('host');
+    act(() => menu({ id: 'session-ended' }));
+    expect(await screen.findByRole('heading', { name: 'Host a session' })).toBeInTheDocument();
+  });
+
   it('View and Edit > Find act on the session', async () => {
     await setup('host');
     act(() => menu({ id: 'tab:people' }));

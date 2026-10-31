@@ -2,6 +2,7 @@ mod host;
 mod menu;
 mod settings;
 mod terminal;
+mod tray;
 mod viewer;
 
 use std::path::PathBuf;
@@ -12,16 +13,17 @@ use specdeck_core::agent;
 use specdeck_core::environment::{Environment, PROBE_TIMEOUT};
 use specdeck_core::mirror::Colors;
 use specdeck_core::peer::PeerConfig;
-use specdeck_protocol::AgentId;
 use specdeck_protocol::invite::InviteCode;
+use specdeck_protocol::{AgentId, AgentStatus};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::menu::MenuEvent;
 use tauri::{
     AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
+use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
-use crate::host::{HostEvent, HostRuntime, StartOptions};
+use crate::host::{HostEvent, HostRuntime, SharingState, StartOptions, Summary};
 use crate::settings::Settings;
 use crate::viewer::{ViewEvent, ViewerRuntime};
 
@@ -163,7 +165,29 @@ async fn start_hosting(
         signalling_url: state.signalling_url.clone(),
         peer: PeerConfig::default(),
     };
-    let runtime = HostRuntime::start(options, &state.environment()).await?;
+    // The menu-bar or tray icon shows the session from the start, and follows it.
+    let folder_name = folder.file_name().map_or_else(
+        || folder.to_string_lossy().into_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    let starting = Summary {
+        status: AgentStatus::Starting,
+        viewers: 0,
+        code: None,
+        sharing: SharingState::Connecting,
+    };
+    let _ = tray::show(&app, &folder_name, agent.display_name(), &starting);
+    let tray_app = app.clone();
+    let observer: host::Observer = Arc::new(move |summary: Summary| {
+        tray::update(&tray_app, &folder_name, agent.display_name(), &summary);
+    });
+    let runtime = match HostRuntime::start(options, &state.environment(), observer).await {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            tray::remove(&app);
+            return Err(error);
+        }
+    };
     *state.host.lock().unwrap() = Some(runtime);
     let mut settings = state.settings.lock().unwrap();
     settings.add_recent(folder);
@@ -227,12 +251,18 @@ async fn host_set_viewer_limit(state: State<'_, AppState>, limit: u8) -> Result<
 }
 
 #[tauri::command]
-async fn host_close(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    if let Some(host) = state.host.lock().unwrap().take() {
+async fn host_close(app: AppHandle) -> Result<(), String> {
+    end_session(&app);
+    Ok(())
+}
+
+/// Ends the hosted session, if any, and everything that showed it outside the window.
+fn end_session(app: &AppHandle) {
+    if let Some(host) = app.state::<AppState>().host.lock().unwrap().take() {
         host.close();
     }
-    refresh_menu(&app);
-    Ok(())
+    tray::remove(app);
+    refresh_menu(app);
 }
 
 #[tauri::command]
@@ -324,8 +354,12 @@ struct MenuCommand {
 
 fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     let id = event.id().as_ref();
-    if id == menu::ids::QUIT {
-        return quit(app);
+    match id {
+        menu::ids::QUIT => return quit(app),
+        tray::ids::OPEN => return open_main_window(app),
+        tray::ids::COPY_CODE => return copy_invite_code(app),
+        tray::ids::END => return confirm_end_session(app),
+        _ => {}
     }
     let command = match id.strip_prefix(menu::RECENT_PREFIX) {
         Some(index) => {
@@ -341,6 +375,31 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     // The menu works with the window closed too (macOS, while hosting).
     open_main_window(app);
     let _ = app.emit("menu", command);
+}
+
+/// Copies the invite code from the tray, which works with the window closed too.
+fn copy_invite_code(app: &AppHandle) {
+    let code = app.state::<AppState>().host.lock().unwrap().as_ref().and_then(HostRuntime::code);
+    if let Some(code) = code {
+        let _ = app.clipboard().write_text(code);
+    }
+}
+
+/// Ends the session from the tray, after the same question the window asks.
+fn confirm_end_session(app: &AppHandle) {
+    let handle = app.clone();
+    app.dialog()
+        .message("Everyone watching is disconnected, the agent stops, and the invite code stops working.")
+        .title("End the session for everyone?")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom("End Session".into(), "Cancel".into()))
+        .show(move |confirmed| {
+            if confirmed {
+                end_session(&handle);
+                // An open window goes back to the start screen.
+                let _ = handle.emit("menu", MenuCommand { id: "session-ended".into(), path: None });
+            }
+        });
 }
 
 /// Quits, after confirming when that would end a hosted session for everyone.
@@ -361,9 +420,7 @@ fn quit(app: &AppHandle) {
         ))
         .show(move |confirmed| {
             if confirmed {
-                if let Some(host) = handle.state::<AppState>().host.lock().unwrap().take() {
-                    host.close();
-                }
+                end_session(&handle);
                 handle.exit(0);
             }
         });
@@ -381,6 +438,7 @@ fn window_title() -> String {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let config_dir = profile_dir(app.path().app_config_dir()?);
             let data_dir = profile_dir(app.path().app_cache_dir()?).join("sessions");
