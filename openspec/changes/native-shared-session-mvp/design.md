@@ -104,7 +104,7 @@ Host and viewer both use the `datachannel` crate (libdatachannel bindings, vendo
 
 ### 7. Wire protocol v1
 
-- `control` messages: `serde` enums encoded with `postcard`, length-checked; unknown variants from viewers are rejected. Viewer to host: `hello` (protocol version, username, last sequences, resume token), `resend`, `leave`. Host to viewer: `welcome` (viewer id, session public key, size, resume token, agent id, timeline support), `rejoin-code`, `refused` (reason), `participants`, `status`, `session-ended`.
+- `control` messages: `serde` enums encoded with `postcard`, length-checked; unknown variants from viewers are rejected. Viewer to host: `hello` (protocol version, username, last sequences, resume token), `resend`, `leave`. Host to viewer: `welcome` (viewer id, session public key, size, resume token, rejoin room, agent id, timeline support), `refused` (reason), `participants`, `status`, `session-ended`.
 - `stream` frames: `kind` (output, resize, history batch, timeline event), sequence, payload, Ed25519 signature over everything before it. A viewer drops a frame whose sequence is not the next expected one, or that fails verification, and sends `resend`.
 - Signing uses `ed25519-dalek` with a key pair per session; the public key is trusted because it arrives over the code-authenticated connection (decision 8). Signing per 16 ms batch keeps the cost low.
 - `checkVersion` accepts equal protocol versions only, and the refusal says which side must update.
@@ -115,7 +115,7 @@ Same scheme as SpecDeck 0.x, reimplemented:
 
 - Code: 12 random Crockford base32 characters (about 60 bits), shown as `XXXX-XXXX-XXXX`; input is normalised (case, dashes, `O`→`0`, `I`/`L`→`1`).
 - HKDF-SHA256 derives a **room id** (sent to signalling) and an **auth key** (never sent). SDP offers and answers carry an HMAC under the auth key, so the signalling service cannot substitute DTLS fingerprints (`session-sharing`: End-to-end encryption).
-- Revoke and remove rotate the code. Admitted viewers receive the new code over `control` (`rejoin-code`) and present their resume token when reconnecting, so a revoked code does not lock them out; a removed viewer gets neither.
+- Revoke and remove rotate the code. Admitted viewers reconnect through a **rejoin room** the host opens for the whole session (its id comes in `welcome`), authenticating offer and answer with their own resume token instead of the code. A viewer that was offline while the code changed can therefore still return; a removed viewer's token is forgotten, so it cannot; and after the session closed the rejoin room is gone, which tells the viewer the session ended.
 - Join link: `specdeck://join/<code>`, registered with `tauri-plugin-deep-link`. The link contains the code, so it is as secret as the code.
 
 ### 9. Signalling service and TURN

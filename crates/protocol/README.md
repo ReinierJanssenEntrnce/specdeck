@@ -37,8 +37,7 @@ Viewer messages come from untrusted peers. `decode_viewer` rejects messages over
 
 | Message | Fields | Meaning |
 |---|---|---|
-| `Welcome` | `protocol_version`, `viewer_id`, `session_public_key`, `cols`, `rows`, `resume_token`, `agent`, `timeline_supported` | Viewer admitted. `session_public_key` verifies every stream frame; `timeline_supported` is false for agents whose events are not captured (OpenCode, omp) |
-| `RejoinCode` | `code` | The current invite code, sent after `Welcome` and after every rotation, so an admitted viewer can reconnect after the host made a new code. A removed viewer does not get it |
+| `Welcome` | `protocol_version`, `viewer_id`, `session_public_key`, `cols`, `rows`, `resume_token`, `rejoin_room`, `agent`, `timeline_supported` | Viewer admitted. `session_public_key` verifies every stream frame; `resume_token` and `rejoin_room` are for reconnecting (see below); `timeline_supported` is false for agents whose events are not captured (OpenCode, omp) |
 | `Refused` | `reason` | Not admitted: `ViewerOutdated`, `HostOutdated`, `SessionFull`, `Removed` or `SessionEnded`. `RefusalReason::message()` is the text to show. The host closes the connection afterwards |
 | `Participants` | `participants[]` (`id`, `username`, `role`, `label`) | Everyone in the session, on every change. `label` adds a suffix when usernames collide |
 | `Status` | `status` | `Starting`, `Working`, `Waiting`, `Exited` or `Unknown` (agents whose events are not captured) |
@@ -53,7 +52,7 @@ viewer                                      host
   | <-- Refused {reason} ---------------------  |  (then the host closes the connection)
   |  or                                        |
   | <-- Welcome {..., session_public_key} ----  |
-  | <-- RejoinCode, Participants, Status -----  |
+  | <-- Participants, Status -----------------  |
   | <== history, then live records and ======  |
   |     timeline events on `stream`             |
 ```
@@ -88,6 +87,10 @@ These are the same operation: the host starts sending records from a sequence nu
 - **Slow viewer**: the host stops sending live records to a viewer whose send buffer is full, and continues from where it is with history batches once the buffer drains.
 
 A viewer applies a record only if its sequence is exactly one higher than the last one applied, and otherwise asks for the missing range with `Resend`.
+
+### Rejoin room
+
+A viewer that was admitted reconnects through the session's **rejoin room** (from `Welcome`), not the invite code: the host keeps that room open for the whole session, so a viewer that was offline while the host made a new code can still return. Its offer and the host's answer are authenticated with the viewer's resume token instead of the code's auth key; the host tries the tokens of the viewers it admitted. A removed viewer's token is forgotten, so it cannot return this way. When the host closed the session the rejoin room is gone, and the viewer is told the session ended.
 
 ## Timeline events
 

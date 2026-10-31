@@ -8,8 +8,12 @@ pub mod ice;
 pub mod launcher;
 pub mod mirror;
 pub mod output_log;
+pub mod peer;
 pub mod session;
+pub mod sharing;
+pub mod signalling_client;
 pub mod timeline;
+pub mod viewer;
 
 #[cfg(test)]
 mod test_support;

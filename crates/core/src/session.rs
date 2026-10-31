@@ -14,7 +14,7 @@ use portable_pty::{ChildKiller, MasterPty, PtySize};
 use specdeck_protocol::timeline::{Entry, TimelineEvent};
 use specdeck_protocol::{AgentId, AgentStatus};
 use tempfile::NamedTempFile;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use crate::activity::{Activity, Change};
 use crate::environment::Environment;
@@ -63,9 +63,74 @@ enum Command {
     Close,
 }
 
+/// What participants see of a hosted session, shared with the sharing side without giving it
+/// any way to write to the agent.
+#[derive(Clone)]
+pub struct SessionView {
+    agent: AgentId,
+    log: Arc<OutputLog>,
+    timeline: Arc<RwLock<Vec<TimelineEvent>>>,
+    status: Arc<Mutex<AgentStatus>>,
+    size: Arc<Mutex<(u16, u16)>>,
+    /// Bumped whenever the timeline, the status or the size changes.
+    changes: Arc<watch::Sender<u64>>,
+}
+
+impl SessionView {
+    pub fn agent(&self) -> AgentId {
+        self.agent
+    }
+
+    pub fn log(&self) -> &Arc<OutputLog> {
+        &self.log
+    }
+
+    /// Timeline entries from index `from` on.
+    pub fn timeline_from(&self, from: usize) -> Vec<TimelineEvent> {
+        self.timeline.read().unwrap().get(from..).map(<[_]>::to_vec).unwrap_or_default()
+    }
+
+    pub fn timeline_len(&self) -> usize {
+        self.timeline.read().unwrap().len()
+    }
+
+    pub fn status(&self) -> AgentStatus {
+        *self.status.lock().unwrap()
+    }
+
+    /// The terminal size the host set last.
+    pub fn size(&self) -> (u16, u16) {
+        *self.size.lock().unwrap()
+    }
+
+    /// Notifies when the timeline, the status or the size changes. New log records are
+    /// notified by [`OutputLog::subscribe`].
+    pub fn subscribe(&self) -> watch::Receiver<u64> {
+        self.changes.subscribe()
+    }
+
+    fn changed(&self) {
+        self.changes.send_modify(|n| *n += 1);
+    }
+
+    /// A view of a log without a running agent, for tests.
+    #[cfg(test)]
+    pub(crate) fn detached(agent: AgentId, log: Arc<OutputLog>) -> Self {
+        Self {
+            agent,
+            log,
+            timeline: Arc::default(),
+            status: Arc::new(Mutex::new(AgentStatus::Unknown)),
+            size: Arc::new(Mutex::new((80, 24))),
+            changes: Arc::new(watch::channel(0).0),
+        }
+    }
+}
+
 pub struct HostSession {
     agent: AgentId,
     log: Arc<OutputLog>,
+    view: SessionView,
     timeline: Arc<RwLock<Vec<TimelineEvent>>>,
     status: Arc<Mutex<AgentStatus>>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
@@ -116,11 +181,20 @@ impl HostSession {
         spawn_exit_watcher(process.child, commands.clone());
 
         let (events, event_rx) = mpsc::unbounded_channel();
-        let session = Self {
+        let view = SessionView {
             agent: config.agent,
             log: log.clone(),
             timeline: Arc::default(),
             status: Arc::new(Mutex::new(Activity::new(config.agent).status())),
+            size: Arc::new(Mutex::new((config.cols, config.rows))),
+            changes: Arc::new(watch::channel(0).0),
+        };
+        let session = Self {
+            agent: config.agent,
+            log: log.clone(),
+            timeline: view.timeline.clone(),
+            status: view.status.clone(),
+            view: view.clone(),
             writer: Arc::new(Mutex::new(process.writer)),
             commands: commands.clone(),
             killer: Mutex::new(killer),
@@ -139,6 +213,7 @@ impl HostSession {
             timeline: session.timeline.clone(),
             status: session.status.clone(),
             host_entered: session.host_entered.clone(),
+            view,
             events,
         };
         pump.emit_entry(pump.builder.session_started());
@@ -148,6 +223,11 @@ impl HostSession {
 
     pub fn agent(&self) -> AgentId {
         self.agent
+    }
+
+    /// What participants see of this session, for sharing it.
+    pub fn view(&self) -> SessionView {
+        self.view.clone()
     }
 
     /// The session's terminal history.
@@ -209,6 +289,7 @@ struct Pump {
     timeline: Arc<RwLock<Vec<TimelineEvent>>>,
     status: Arc<Mutex<AgentStatus>>,
     host_entered: Arc<Mutex<Option<Instant>>>,
+    view: SessionView,
     events: mpsc::UnboundedSender<SessionEvent>,
 }
 
@@ -252,6 +333,8 @@ impl Pump {
                     let size = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
                     let _ = self.master.resize(size);
                     self.mirror.resize(cols, rows);
+                    *self.view.size.lock().unwrap() = (cols, rows);
+                    self.view.changed();
                     if self.log.append_resize(cols, rows).is_ok() {
                         let _ = self.events.send(SessionEvent::Resized { cols, rows });
                     }
@@ -312,6 +395,7 @@ impl Pump {
             match change {
                 Change::Status(status) => {
                     *self.status.lock().unwrap() = status;
+                    self.view.changed();
                     let _ = self.events.send(SessionEvent::Status(status));
                 }
                 Change::Timeline(entry) => self.emit_entry(entry),
@@ -323,6 +407,7 @@ impl Pump {
         let at = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
         let event = stamp(entry, self.log.latest(), at);
         self.timeline.write().unwrap().push(event.clone());
+        self.view.changed();
         let _ = self.events.send(SessionEvent::Timeline(event));
     }
 }

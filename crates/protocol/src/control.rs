@@ -44,16 +44,15 @@ pub enum HostMessage {
         session_public_key: [u8; 32],
         cols: u16,
         rows: u16,
-        /// Secret for reconnecting as the same viewer.
+        /// Secret for reconnecting as the same viewer; also authenticates the reconnection.
         resume_token: [u8; 32],
+        /// Signalling room for reconnecting. Open for the whole session, whatever the current
+        /// invite code is, so a viewer that was offline while the host made a new code can
+        /// still return.
+        rejoin_room: String,
         agent: AgentId,
         /// False for agents whose events are not captured.
         timeline_supported: bool,
-    },
-    /// The current invite code, sent after `Welcome` and after every rotation, so an admitted
-    /// viewer can reconnect after the host made a new code. A removed viewer does not get it.
-    RejoinCode {
-        code: String,
     },
     /// The viewer is not admitted; the host closes the connection after this.
     Refused {
@@ -190,10 +189,10 @@ mod tests {
                 cols: 120,
                 rows: 40,
                 resume_token: [2; 32],
+                rejoin_room: "0123abcd".into(),
                 agent: AgentId::OpenCode,
                 timeline_supported: false,
             },
-            HostMessage::RejoinCode { code: "7K2M9QXH4TPA".into() },
             HostMessage::Refused { reason: RefusalReason::SessionFull },
             HostMessage::Participants {
                 participants: vec![Participant {
