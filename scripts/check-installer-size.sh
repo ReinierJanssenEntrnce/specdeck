@@ -10,7 +10,8 @@ found=0
 while IFS= read -r -d '' file; do
   found=1
   size=$(wc -c < "$file" | tr -d ' ')
-  printf '%8.1f MB  %s\n' "$(echo "$size / 1048576" | bc -l)" "$file"
+  # awk, not bc: Git Bash on Windows has no bc.
+  awk -v size="$size" -v file="$file" 'BEGIN { printf "%8.1f MB  %s\n", size / 1048576, file }'
   if [ "$size" -gt "$limit" ]; then
     echo "  larger than ${limit_mb} MB" >&2
     status=1
