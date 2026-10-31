@@ -1,6 +1,6 @@
 # specdeck-protocol
 
-The wire protocol between a host and its viewers. Both sides use this crate; it does no I/O. Design background: decisions 7 and 8 in [`design.md`](../../openspec/changes/native-shared-session-mvp/design.md).
+The wire protocol between a host and its viewers. Both sides use this crate; it does no I/O. Design background: decisions 7 and 8 in [`design.md`](../../openspec/changes/archive/2026-10-31-native-shared-session-mvp/design.md).
 
 Current version: `PROTOCOL_VERSION = 1` ([`src/control.rs`](src/control.rs)). Not compatible with SpecDeck 0.x.
 

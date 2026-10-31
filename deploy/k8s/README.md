@@ -1,6 +1,6 @@
 # Kubernetes deployment
 
-SpecDeck's server side: the signalling service (matchmaking and TURN credentials) and coturn (the TURN relay). Neither can read session content; see design decisions 8 and 9 in [`design.md`](../../openspec/changes/native-shared-session-mvp/design.md).
+SpecDeck's server side: the signalling service (matchmaking and TURN credentials) and coturn (the TURN relay). Neither can read session content; see design decisions 8 and 9 in [`design.md`](../../openspec/changes/archive/2026-10-31-native-shared-session-mvp/design.md).
 
 | Path | Contents |
 |---|---|

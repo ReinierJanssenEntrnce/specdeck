@@ -8,7 +8,7 @@ SpecDeck lets one person (the **host**) run a coding agent (Claude Code, OpenCod
 
 This is SpecDeck 1.x, a native rewrite of the Electron app (0.x, in `../claude-share`) on Tauri 2 with a Rust session engine. 1.x and 0.x cannot join each other's sessions.
 
-How to use the app: [docs/user-guide.md](docs/user-guide.md). Status: in development. What is being built is in [`openspec/changes/native-shared-session-mvp`](openspec/changes/native-shared-session-mvp) (proposal, specs, design and tasks).
+How to use the app: [docs/user-guide.md](docs/user-guide.md). What the app does is specified in [`openspec/specs`](openspec/specs); the design decisions are in the archived change [`native-shared-session-mvp`](openspec/changes/archive/2026-10-31-native-shared-session-mvp/design.md), and the work left before 1.0 is in [`openspec/changes/release-and-verification`](openspec/changes/release-and-verification).
 
 ## Install
 
