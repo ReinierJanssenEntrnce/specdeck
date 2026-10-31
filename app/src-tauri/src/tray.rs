@@ -2,8 +2,8 @@
 //! 11). It shows the session's state and viewers, and offers the window, the invite code and
 //! ending the session, also while the window is closed.
 
-use specdeck_protocol::AgentStatus;
 use specdeck_protocol::invite::InviteCode;
+use specdeck_protocol::{AgentId, AgentStatus};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
@@ -20,8 +20,10 @@ pub mod ids {
 }
 
 /// The first line of the menu: what the agent is doing.
-fn state_line(agent_name: &str, summary: &Summary) -> String {
+fn state_line(agent: AgentId, summary: &Summary) -> String {
+    let agent_name = agent.display_name();
     match summary.status {
+        AgentStatus::Exited if agent == AgentId::Terminal => "The shell has exited".into(),
         AgentStatus::Starting => format!("{agent_name} is starting"),
         AgentStatus::Working => format!("{agent_name} is working"),
         AgentStatus::Waiting => format!("{agent_name} is waiting for you"),
@@ -45,7 +47,7 @@ fn viewers_line(summary: &Summary) -> String {
 fn menu<R: Runtime>(
     app: &AppHandle<R>,
     folder: &str,
-    agent_name: &str,
+    agent: AgentId,
     summary: &Summary,
 ) -> tauri::Result<Menu<R>> {
     let info =
@@ -57,7 +59,7 @@ fn menu<R: Runtime>(
     };
     MenuBuilder::new(app)
         .item(&info("tray:folder", format!("Hosting {folder}"))?)
-        .item(&info("tray:state", state_line(agent_name, summary))?)
+        .item(&info("tray:state", state_line(agent, summary))?)
         .item(&info("tray:viewers", viewers_line(summary))?)
         .separator()
         .item(&MenuItemBuilder::with_id(ids::OPEN, "Open Window").build(app)?)
@@ -79,7 +81,7 @@ fn tooltip(folder: &str, summary: &Summary) -> String {
 pub fn show<R: Runtime>(
     app: &AppHandle<R>,
     folder: &str,
-    agent_name: &str,
+    agent: AgentId,
     summary: &Summary,
 ) -> tauri::Result<()> {
     remove(app);
@@ -94,16 +96,16 @@ pub fn show<R: Runtime>(
         .icon(icon)
         .icon_as_template(true)
         .tooltip(tooltip(folder, summary))
-        .menu(&menu(app, folder, agent_name, summary)?)
+        .menu(&menu(app, folder, agent, summary)?)
         .show_menu_on_left_click(true)
         .build(app)?;
     Ok(())
 }
 
 /// Brings the icon's menu up to date.
-pub fn update<R: Runtime>(app: &AppHandle<R>, folder: &str, agent_name: &str, summary: &Summary) {
+pub fn update<R: Runtime>(app: &AppHandle<R>, folder: &str, agent: AgentId, summary: &Summary) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else { return };
-    if let Ok(menu) = menu(app, folder, agent_name, summary) {
+    if let Ok(menu) = menu(app, folder, agent, summary) {
         let _ = tray.set_menu(Some(menu));
     }
     let _ = tray.set_tooltip(Some(tooltip(folder, summary)));
@@ -125,7 +127,7 @@ mod tests {
     #[test]
     fn says_what_the_agent_does_and_who_watches() {
         let waiting = summary(AgentStatus::Waiting, 3, SharingState::Ready);
-        assert_eq!(state_line("Claude Code", &waiting), "Claude Code is waiting for you");
+        assert_eq!(state_line(AgentId::ClaudeCode, &waiting), "Claude Code is waiting for you");
         assert_eq!(viewers_line(&waiting), "3 viewers");
         assert_eq!(
             viewers_line(&summary(AgentStatus::Unknown, 1, SharingState::Ready)),
@@ -136,8 +138,17 @@ mod tests {
             "No viewers yet · sharing unavailable"
         );
         assert_eq!(
-            state_line("OpenCode", &summary(AgentStatus::Unknown, 0, SharingState::Ready)),
+            state_line(AgentId::OpenCode, &summary(AgentStatus::Unknown, 0, SharingState::Ready)),
             "Session is live"
         );
+    }
+
+    #[test]
+    fn a_terminal_session_talks_about_its_shell() {
+        let exited = summary(AgentStatus::Exited, 0, SharingState::Ready);
+        assert_eq!(state_line(AgentId::Terminal, &exited), "The shell has exited");
+        assert_eq!(state_line(AgentId::Omp, &exited), "omp has exited");
+        let live = summary(AgentStatus::Unknown, 2, SharingState::Ready);
+        assert_eq!(state_line(AgentId::Terminal, &live), "Session is live");
     }
 }

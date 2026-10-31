@@ -17,7 +17,8 @@ fn main() {
         Some("claude-code") => AgentId::ClaudeCode,
         Some("open-code") => AgentId::OpenCode,
         Some("omp") => AgentId::Omp,
-        _ => panic!("usage: launch <claude-code|open-code|omp> [folder]"),
+        Some("terminal") => AgentId::Terminal,
+        _ => panic!("usage: launch <claude-code|open-code|omp|terminal> [folder]"),
     };
     let folder = args.next().map_or_else(|| std::env::current_dir().unwrap(), Into::into);
 

@@ -1,6 +1,6 @@
 # SpecDeck user guide
 
-SpecDeck lets one person (the **host**) run a coding agent on their computer while teammates (the **viewers**) follow along from anywhere. Viewers see the agent's terminal and, for Claude Code, a timeline of every prompt, answer, tool call and file change. Each person scrolls and searches at their own pace.
+SpecDeck lets one person (the **host**) run a coding agent, or just a terminal, on their computer while teammates (the **viewers**) follow along from anywhere. Viewers see the terminal and, for Claude Code, a timeline of every prompt, answer, tool call and file change. Each person scrolls and searches at their own pace.
 
 Viewers are read-only. Only the host types into the agent, and the agent runs on the host's own login.
 
@@ -8,13 +8,14 @@ Viewers are read-only. Only the host types into the agent, and the agent runs on
 
 **Everyone** needs SpecDeck for macOS, Windows or Linux, and an internet connection. SpecDeck connects through your team's sharing service, so no VPN is needed. It uses UDP; on networks that block UDP entirely (some company networks), joining does not work and SpecDeck says so.
 
-**The host** also needs at least one coding agent, installed and logged in:
+**The host** can share a coding agent, installed and logged in, or a plain terminal:
 
-| Agent | What viewers see |
+| Choice | What viewers see |
 |---|---|
 | Claude Code (`claude`) | The terminal, plus the timeline, file diffs and the list of touched files |
 | OpenCode (`opencode`) | The terminal |
 | omp (`omp`) | The terminal |
+| Terminal | Your own shell: your login shell on macOS and Linux, PowerShell on Windows. Nothing to install |
 
 Check an agent by running it in a terminal: it should start without asking you to log in. On **Windows**, Claude Code also needs **Git for Windows** (Git Bash).
 
@@ -28,9 +29,10 @@ Two people may use the same name; the second is shown as `Anna (2)`. Names are l
 
 ## Host a session
 
-1. Under **Host a session** (or **File › Host a Session…**, **⌘N** on macOS, **Ctrl+Shift+N** on Windows and Linux), pick the **agent**. Agents that are not installed are shown as *Not installed*. SpecDeck remembers the agent you used last.
-2. Select one of your **recent folders**, or **Choose a folder and start…** and pick the project folder the agent should work in. Recent folders list the last five folders you hosted in, newest first; they are also under **File › Open Recent**. Select **×** next to one to remove it from the list (the folder itself is not touched).
-3. The agent starts in the terminal. Use it as you normally would.
+1. Under **Host a session** (or **File › Host a Session…**, **⌘N** on macOS, **Ctrl+Shift+N** on Windows and Linux), pick the **agent**, or **Terminal** to share your shell without an agent. Agents that are not installed are shown as *Not installed*. SpecDeck remembers what you chose last.
+   - With **Terminal**, viewers see all output, including anything secret a command prints, such as tokens in environment variables or `.env` files. Passwords you type at a prompt are not shown, because the shell does not echo them.
+2. Select one of your **recent folders**, or **Choose a folder and start…** and pick the project folder the agent or shell should start in. Recent folders list the last five folders you hosted in, newest first; they are also under **File › Open Recent**. Select **×** next to one to remove it from the list (the folder itself is not touched).
+3. The agent or your shell starts in the terminal. Use it as you normally would. In a terminal session, typing `exit` ends the shell; the session stays open for viewers to read until you end it.
    - The first time in a new folder, Claude Code asks whether you trust it. Answer it in the terminal.
 4. Share the **invite code** at the top, for example `7K2M-9QXH-4TPA`. **Copy** copies the code; the link button copies a `specdeck://join/…` link, which opens SpecDeck and joins when a teammate clicks it.
 
@@ -44,9 +46,9 @@ While you host:
 | Stop people from joining with the current code | Select the **new code** button next to the invite code. People already watching stay; share the new code with anyone still to join |
 | Remove someone | In **People**, select **Remove** next to their name and confirm. They are disconnected immediately, and the invite code changes so they cannot rejoin with it |
 | Limit the number of viewers | In **People**, set **Max viewers** (1 to 20). Lowering it never disconnects anyone already watching |
-| End the session for everyone | Select **End session** and confirm. The agent stops and the invite code stops working |
+| End the session for everyone | Select **End session** and confirm. The agent or shell stops and the invite code stops working |
 
-The status next to the folder name shows what the agent is doing: **working**, **waiting for input**, or **exited**. For OpenCode and omp it shows **Live**, because their activity is not shared. When Claude Code asks your permission, for example to run a command, the status shows **waiting** and the timeline shows the question, so viewers see why it paused.
+The status next to the folder name shows what the agent is doing: **working**, **waiting for input**, or **exited**. For OpenCode and omp it shows **Live**, because their activity is not shared; a terminal session also shows **Live**, and **Shell exited** once you exit the shell. When Claude Code asks your permission, for example to run a command, the status shows **waiting** and the timeline shows the question, so viewers see why it paused.
 
 If you set up your own Claude Code status line, it keeps showing in the terminal. SpecDeck reads the same figures from it for the bar at the bottom of the window, which everyone in the session sees, including your 5-hour and 7-day limits.
 

@@ -106,6 +106,18 @@ describe('viewer screen', () => {
     expect(screen.getByRole('meter', { name: 'Context window' })).toHaveAttribute('aria-valuenow', '50');
   });
 
+  it('shows a terminal session as live, without guessing at activity', () => {
+    setup();
+    act(() => {
+      emit({ type: 'joined', viewerId: 2, agent: 'terminal', timelineSupported: false, cols: 100, rows: 30 });
+      emit({ type: 'status', status: 'unknown' });
+    });
+    const pill = screen.getByText('Live').closest('.pill')!;
+    expect(pill).not.toHaveAttribute('title');
+    act(() => emit({ type: 'status', status: 'exited' }));
+    expect(screen.getByText('Shell exited')).toBeInTheDocument();
+  });
+
   it('shows no usage for an agent without a timeline', () => {
     setup();
     act(() => {

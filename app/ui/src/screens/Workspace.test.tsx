@@ -49,6 +49,15 @@ describe('timeline panel', () => {
     expect(terminal.handle.scrollToSeq).toHaveBeenCalledWith(prompt1.outputSeq);
   });
 
+  it('says a terminal session has no timeline, without promising one', () => {
+    renderWorkspace({ timelineSupported: false, agentName: 'Terminal', terminal: true, timeline: [] });
+    fireEvent.click(screen.getByRole('tab', { name: /Timeline/ }));
+    expect(screen.getByText('A terminal session has no timeline')).toBeInTheDocument();
+    expect(screen.queryByText(/Claude Code's events/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /Files/ }));
+    expect(screen.getByText('No file list for a terminal session')).toBeInTheDocument();
+  });
+
   it('says so for an agent without a timeline', () => {
     renderWorkspace({ timelineSupported: false, agentName: 'OpenCode', timeline: [] });
     // Opens on People, the only tab with content; the timeline explains itself.

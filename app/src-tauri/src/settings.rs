@@ -106,6 +106,10 @@ mod tests {
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path), settings);
         assert_eq!(settings.username.as_deref(), Some("nick"));
+        // A terminal session is remembered as the last choice too.
+        settings.last_agent = Some(AgentId::Terminal);
+        settings.save(&path).unwrap();
+        assert_eq!(Settings::load(&path).last_agent, Some(AgentId::Terminal));
     }
 
     #[test]

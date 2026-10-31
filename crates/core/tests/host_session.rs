@@ -356,3 +356,58 @@ exit 0"#,
     );
     session.close();
 }
+
+#[tokio::test]
+async fn terminal_session_runs_the_hosts_login_shell() {
+    let bin = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    // Shows how it was started, then works like a shell until the host types exit.
+    fake_agent(
+        bin.path(),
+        "myshell",
+        r#"echo "args:$*"; echo "cwd:$(pwd -P)"; echo "marker:${CLAUDECODE:-none}"
+read line; echo "got:$line"; read line; exit 4"#,
+    );
+    let mut env = env(bin.path());
+    env.set("SHELL", bin.path().join("myshell"));
+    // Started from a Claude Code session, as during development: the shell must not inherit it.
+    env.set("CLAUDECODE", "1");
+
+    let (session, mut events) =
+        HostSession::start(config(AgentId::Terminal, folder.path(), data.path()), &env)
+            .await
+            .unwrap();
+    wait_for_output(&session, &mut events, "marker:").await;
+    let output = output_text(&session);
+    assert!(output.contains("args:-l"), "{output}");
+    let cwd = folder.path().canonicalize().unwrap();
+    assert!(output.contains(&format!("cwd:{}", cwd.display())), "{output}");
+    assert!(output.contains("marker:none"), "{output}");
+    assert_eq!(session.status(), AgentStatus::Unknown);
+    // No hooks or status line for a shell.
+    let written: Vec<String> = std::fs::read_dir(data.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("hooks-") || name.starts_with("statusline-"))
+        .collect();
+    assert!(written.is_empty(), "{written:?}");
+
+    session.input(b"ls\r").unwrap();
+    wait_for_output(&session, &mut events, "got:ls").await;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !session.timeline().iter().any(|e| matches!(e.entry, Entry::Git { .. })) {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("no git state");
+
+    session.input(b"exit\r").unwrap();
+    let exited = next_matching(&mut events, |e| matches!(e, SessionEvent::Exited { .. })).await;
+    assert_eq!(exited, SessionEvent::Exited { code: 4 });
+    // The shell ended, but the session stays open until the host ends it.
+    assert_eq!(session.status(), AgentStatus::Exited);
+    assert!(session.log().path().exists());
+    session.close();
+}

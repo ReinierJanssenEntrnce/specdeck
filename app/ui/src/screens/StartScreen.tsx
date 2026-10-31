@@ -152,7 +152,8 @@ function HostCard({
   const [agent, setAgent] = useState<AgentId | null>(() => defaultAgent(profile));
   const [starting, setStarting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const noAgents = profile.agents.every((a) => !a.installed);
+  // Terminal is always there; the coding agents may all be missing.
+  const noCodingAgents = profile.agents.every((a) => a.id === 'terminal' || !a.installed);
 
   const start = async (folder: string | null) => {
     if (!folder || !agent) return;
@@ -189,7 +190,7 @@ function HostCard({
     <section className="card" aria-labelledby="host-title">
       <div>
         <h2 id="host-title">Host a session</h2>
-        <p className="lead">Start a coding agent in a project folder. You type; people you invite watch.</p>
+        <p className="lead">Start a coding agent or a terminal in a project folder. You type; people you invite watch.</p>
       </div>
       <div style={{ display: 'grid', gap: 8 }}>
         <span className="section-label" id="agent-label">
@@ -200,10 +201,9 @@ function HostCard({
             <AgentChoice key={info.id} info={info} selected={agent === info.id} onSelect={() => setAgent(info.id)} />
           ))}
         </div>
-        {noAgents && (
-          <span className="error-text" role="alert">
-            No coding agent is installed. Install Claude Code, OpenCode or omp and log in, then reopen SpecDeck.
-          </span>
+        {agent === 'terminal' && <span className="field-hint">Everyone you invite sees all output, including any secrets a command prints.</span>}
+        {noCodingAgents && (
+          <span className="field-hint">No coding agent is installed. Install Claude Code, OpenCode or omp for a timeline; you can still share a terminal.</span>
         )}
       </div>
       {profile.recentFolders.length > 0 && (
@@ -250,7 +250,7 @@ function HostCard({
 }
 
 function AgentChoice({ info, selected, onSelect }: { info: AgentInfo; selected: boolean; onSelect: () => void }) {
-  const detail = !info.installed ? 'Not installed' : info.hasTimeline ? 'Timeline and diffs' : 'Terminal only';
+  const detail = !info.installed ? 'Not installed' : info.id === 'terminal' ? 'Your shell' : info.hasTimeline ? 'Timeline and diffs' : 'Terminal only';
   return (
     <button
       className="agent"

@@ -1,6 +1,8 @@
 //! Everything agent-specific: where an agent's executable is and what it needs before it can
 //! start (design decision 3a). The pty, output log and streaming never know which agent runs.
+//! A terminal session is one more "agent": the host's own shell.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use specdeck_protocol::AgentId;
@@ -30,13 +32,23 @@ pub struct Availability {
     pub executable: Option<PathBuf>,
 }
 
-/// Name of the agent's executable, looked up on `PATH`.
-pub fn executable_name(agent: AgentId) -> &'static str {
-    match agent {
+/// What to run for a session: the executable and the arguments it needs before any others.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Program {
+    pub executable: PathBuf,
+    pub args: Vec<OsString>,
+}
+
+/// Where `agent` is on this machine and how to start it; `None` when it is not installed (or,
+/// for a terminal, when no shell was found).
+pub fn program(agent: AgentId, env: &Environment) -> Option<Program> {
+    let name = match agent {
         AgentId::ClaudeCode => "claude",
         AgentId::OpenCode => "opencode",
         AgentId::Omp => "omp",
-    }
+        AgentId::Terminal => return terminal(env),
+    };
+    env.find_executable(name).map(|executable| Program { executable, args: Vec::new() })
 }
 
 /// Which supported agents are installed, in display order.
@@ -45,9 +57,60 @@ pub fn detect(env: &Environment) -> Vec<Availability> {
         .into_iter()
         .map(|agent| Availability {
             agent,
-            executable: env.find_executable(executable_name(agent)),
+            executable: program(agent, env).map(|program| program.executable),
         })
         .collect()
+}
+
+/// The shell the host's own terminal app would start (design decision 2 of
+/// `host-terminal-session`): PowerShell on Windows, the login shell elsewhere.
+fn terminal(env: &Environment) -> Option<Program> {
+    if cfg!(windows) {
+        let executable = windows_shell(env, Path::is_file)?;
+        return Some(Program { executable, args: vec!["-NoLogo".into()] });
+    }
+    let executable =
+        unix_shell(env.get("SHELL").map(PathBuf::from), cfg!(target_os = "macos"), is_executable)?;
+    // A login shell, as macOS's Terminal and most Linux terminals start: the host's profile,
+    // prompt and aliases.
+    Some(Program { executable, args: vec!["-l".into()] })
+}
+
+/// `$SHELL` when it can be run, else the platform's usual shells in order.
+fn unix_shell(
+    shell: Option<PathBuf>,
+    macos: bool,
+    is_executable: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let fallbacks: &[&str] =
+        if macos { &["/bin/zsh", "/bin/bash", "/bin/sh"] } else { &["/bin/bash", "/bin/sh"] };
+    shell
+        .filter(|shell| shell.is_absolute())
+        .into_iter()
+        .chain(fallbacks.iter().map(PathBuf::from))
+        .find(|path| is_executable(path))
+}
+
+/// PowerShell 7 when installed, else Windows PowerShell, which comes with Windows.
+fn windows_shell(env: &Environment, exists: impl Fn(&Path) -> bool) -> Option<PathBuf> {
+    env.find_executable("pwsh.exe").or_else(|| env.find_executable("powershell.exe")).or_else(
+        || {
+            let root = PathBuf::from(env.get("SystemRoot")?);
+            Some(root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe"))
+                .filter(|path| exists(path))
+        },
+    )
+}
+
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.metadata().is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
 }
 
 /// The first prerequisite of `agent` that is missing on this machine, if any.
@@ -95,10 +158,68 @@ mod tests {
         let env: Environment = [("PATH", dir.path())].into_iter().collect();
 
         let found = detect(&env);
-        assert_eq!(found.len(), 3);
+        assert_eq!(found.len(), 4);
         assert_eq!(found[0].executable, Some(dir.path().join("claude")));
         assert_eq!(found[1].executable, Some(dir.path().join("opencode")));
         assert_eq!(found[2], Availability { agent: AgentId::Omp, executable: None });
+        // A shell always resolves: no $SHELL here, so a system one.
+        assert_eq!(found[3].agent, AgentId::Terminal);
+        assert!(found[3].executable.is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn terminal_runs_the_login_shell_from_shell() {
+        let dir = tempfile::tempdir().unwrap();
+        let shell = crate::test_support::fake_executable(dir.path(), "myshell", "exit 0");
+        let env: Environment = [("SHELL", shell.as_os_str())].into_iter().collect();
+        assert_eq!(
+            program(AgentId::Terminal, &env),
+            Some(Program { executable: shell, args: vec!["-l".into()] })
+        );
+    }
+
+    #[test]
+    fn unix_shell_falls_back_in_order() {
+        let only = |paths: &'static [&'static str]| {
+            move |path: &Path| paths.iter().any(|p| path == Path::new(p))
+        };
+        let missing = Some(PathBuf::from("/opt/gone/fish"));
+        assert_eq!(
+            unix_shell(missing.clone(), true, only(&["/bin/zsh", "/bin/sh"])),
+            Some(PathBuf::from("/bin/zsh"))
+        );
+        assert_eq!(
+            unix_shell(None, true, only(&["/bin/bash", "/bin/sh"])),
+            Some(PathBuf::from("/bin/bash"))
+        );
+        // zsh is the macOS default only; Linux starts with bash.
+        assert_eq!(
+            unix_shell(missing, false, only(&["/bin/zsh", "/bin/sh"])),
+            Some(PathBuf::from("/bin/sh"))
+        );
+        assert_eq!(unix_shell(None, false, only(&[])), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn windows_prefers_powershell_7() {
+        let dir = tempfile::tempdir().unwrap();
+        let env: Environment = [("PATH", dir.path())].into_iter().collect();
+        assert_eq!(windows_shell(&env, |_| false), None);
+
+        let classic = crate::test_support::fake_executable(dir.path(), "powershell.exe", "exit 0");
+        assert_eq!(windows_shell(&env, |_| false), Some(classic));
+        let seven = crate::test_support::fake_executable(dir.path(), "pwsh.exe", "exit 0");
+        assert_eq!(windows_shell(&env, |_| false), Some(seven));
+    }
+
+    #[test]
+    fn windows_powershell_in_its_system_folder() {
+        let env: Environment = [("SystemRoot", r"C:\Windows")].into_iter().collect();
+        let expected =
+            Path::new(r"C:\Windows").join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+        assert_eq!(windows_shell(&env, |path| path == expected), Some(expected.clone()));
     }
 
     #[test]

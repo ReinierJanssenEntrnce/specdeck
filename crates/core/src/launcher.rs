@@ -14,6 +14,8 @@ use crate::environment::Environment;
 pub enum LaunchError {
     #[error("{} is not installed. Install it and log in, then start the session again.", .0.display_name())]
     NotInstalled(AgentId),
+    #[error("No shell was found.")]
+    NoShell,
     #[error("{} needs {}, which was not found.", .agent.display_name(), .prerequisite.display_name())]
     MissingPrerequisite { agent: AgentId, prerequisite: Prerequisite },
     #[error("The folder {0} does not exist.")]
@@ -47,9 +49,10 @@ pub struct AgentProcess {
 
 /// Checks the agent can start, then starts it in a pty.
 pub fn launch(options: &LaunchOptions, env: &Environment) -> Result<AgentProcess, LaunchError> {
-    let executable = env
-        .find_executable(agent::executable_name(options.agent))
-        .ok_or(LaunchError::NotInstalled(options.agent))?;
+    let program = agent::program(options.agent, env).ok_or(match options.agent {
+        AgentId::Terminal => LaunchError::NoShell,
+        agent => LaunchError::NotInstalled(agent),
+    })?;
     if let Some(prerequisite) = agent::missing_prerequisite(options.agent, env) {
         return Err(LaunchError::MissingPrerequisite { agent: options.agent, prerequisite });
     }
@@ -66,7 +69,8 @@ pub fn launch(options: &LaunchOptions, env: &Environment) -> Result<AgentProcess
         })
         .map_err(|e| LaunchError::Pty(e.to_string()))?;
 
-    let mut command = command_for(&executable);
+    let mut command = command_for(&program.executable);
+    command.args(&program.args);
     command.args(&options.extra_args);
     command.cwd(&options.folder);
     command.env_clear();

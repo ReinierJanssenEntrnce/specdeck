@@ -106,6 +106,7 @@ export function ViewerScreen({ code, onLeave }: Props) {
 
   const host = state.participants.find((p) => p.role === 'Host');
   const agentName = state.agent ? AGENT_NAMES[state.agent] : 'the agent';
+  const terminal = state.agent === 'terminal';
   const ending = state.ended ? END_MESSAGES[state.ended] : null;
   const statusBar = useMemo(() => statusBarInfo(state.timeline, state.timelineSupported), [state.timeline, state.timelineSupported]);
 
@@ -144,7 +145,7 @@ export function ViewerScreen({ code, onLeave }: Props) {
         <span className="pill readonly" title="Only the host can type in this session">
           <Eye size={13} aria-hidden /> Read-only
         </span>
-        {state.phase !== 'joining' && state.phase !== 'ended' && <StatusPill status={state.status} agentName={AGENT_NAMES[state.agent ?? 'claude-code']} />}
+        {state.phase !== 'joining' && state.phase !== 'ended' && <StatusPill status={state.status} agentName={AGENT_NAMES[state.agent ?? 'claude-code']} terminal={terminal} />}
         {state.phase === 'ended' && <span className="pill ended">Ended</span>}
         <div className="spacer" />
         <button className="btn" onClick={leave}>
@@ -168,6 +169,7 @@ export function ViewerScreen({ code, onLeave }: Props) {
           ref={workspace}
           mode="viewer"
           agentName={agentName}
+          terminal={terminal}
           timelineSupported={state.timelineSupported}
           timeline={state.timeline}
           participants={state.participants}

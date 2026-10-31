@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Bridge } from '../api/bridge';
 import type { HostEvent } from '../api/types';
+import { demoParticipants } from '../api/demo';
 import { fakeBridge, renderWith } from '../test/helpers';
 import { terminal, TerminalViewStub } from '../test/terminal-stub';
 import { HostScreen } from './HostScreen';
@@ -102,6 +103,30 @@ describe('host screen', () => {
     act(() => emit({ type: 'sharing', state: 'ready', code: 'ABCD1234EFGH' }));
     expect(screen.queryByText(/Sharing is unavailable/)).not.toBeInTheDocument();
     expect(screen.getByLabelText('Invite code')).toHaveTextContent('ABCD-1234-EFGH');
+  });
+
+  it('talks about the shell in a terminal session', async () => {
+    await setup();
+    act(() =>
+      emit({
+        type: 'snapshot',
+        agent: 'terminal',
+        folder: '/Users/nick/projects/webshop',
+        timelineSupported: false,
+        sharing: 'ready',
+        code: '7K2M9QXH4TPA',
+        participants: demoParticipants,
+        status: 'unknown',
+        viewerLimit: 20,
+        exited: null,
+        timeline: [],
+      }),
+    );
+    const pill = screen.getByText('Live').closest('.pill')!;
+    expect(pill).not.toHaveAttribute('title');
+    act(() => emit({ type: 'exited', code: 0 }));
+    expect(screen.getByText(/The shell has exited\. Viewers can still read the session/)).toBeInTheDocument();
+    expect(screen.getByText('Shell exited')).toBeInTheDocument();
   });
 
   it('says when the agent has exited', async () => {

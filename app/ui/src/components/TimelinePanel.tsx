@@ -10,6 +10,8 @@ interface Props {
   model: TimelineModel;
   timelineSupported: boolean;
   agentName: string;
+  /** A terminal session, which never has a timeline. */
+  terminal?: boolean;
   /** Turns matching the current search, by prompt id. */
   matches: Set<string>;
   /** The turn the search stepped to. */
@@ -20,7 +22,7 @@ interface Props {
 
 const TIME = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 
-export function TimelinePanel({ model, timelineSupported, agentName, matches, current, onJump }: Props) {
+export function TimelinePanel({ model, timelineSupported, agentName, terminal = false, matches, current, onJump }: Props) {
   const list = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
 
@@ -43,6 +45,15 @@ export function TimelinePanel({ model, timelineSupported, agentName, matches, cu
     if (current) document.getElementById(`turn-${current}`)?.scrollIntoView({ block: 'center' });
   }, [current]);
 
+  if (!timelineSupported && terminal) {
+    return (
+      <div className="empty">
+        <History aria-hidden />
+        <strong>A terminal session has no timeline</strong>
+        <span>The terminal shows everything.</span>
+      </div>
+    );
+  }
   if (!timelineSupported) {
     return (
       <div className="empty">

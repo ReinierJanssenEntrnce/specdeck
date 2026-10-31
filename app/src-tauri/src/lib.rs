@@ -93,9 +93,9 @@ struct Profile {
     platform: &'static str,
 }
 
-fn profile(state: &AppState) -> Profile {
-    let settings = state.settings.lock().unwrap().clone();
-    let agents = agent::detect(&state.environment())
+/// The agents to choose from, in display order: the coding agents, then Terminal.
+fn agent_infos(env: &Environment) -> Vec<AgentInfo> {
+    agent::detect(env)
         .into_iter()
         .map(|found| AgentInfo {
             id: found.agent,
@@ -103,7 +103,12 @@ fn profile(state: &AppState) -> Profile {
             installed: found.executable.is_some(),
             has_timeline: found.agent.has_timeline(),
         })
-        .collect();
+        .collect()
+}
+
+fn profile(state: &AppState) -> Profile {
+    let settings = state.settings.lock().unwrap().clone();
+    let agents = agent_infos(&state.environment());
     Profile {
         username: settings.username.clone(),
         recent_folders: settings
@@ -216,11 +221,11 @@ async fn start_hosting(
         code: None,
         sharing: SharingState::Connecting,
     };
-    let _ = tray::show(&app, &folder_name, agent.display_name(), &starting);
+    let _ = tray::show(&app, &folder_name, agent, &starting);
     let observed = app.clone();
     let observer: host::Observer = Arc::new(move |notice: HostNotice| match notice {
         HostNotice::Summary(summary) => {
-            tray::update(&observed, &folder_name, agent.display_name(), &summary);
+            tray::update(&observed, &folder_name, agent, &summary);
         }
         HostNotice::ViewerJoined(name) => {
             notify(
@@ -530,11 +535,27 @@ fn copy_invite_code(app: &AppHandle) {
     }
 }
 
+/// What the hosted session runs, if anything.
+fn hosted_agent(app: &AppHandle) -> Option<AgentId> {
+    app.state::<AppState>().host.lock().unwrap().as_ref().map(|host| host.agent)
+}
+
+/// What ending a session stops, for the questions before ending it.
+fn what_stops(agent: Option<AgentId>) -> &'static str {
+    match agent {
+        Some(AgentId::Terminal) => "the shell stops",
+        _ => "the agent stops",
+    }
+}
+
 /// Ends the session from the tray, after the same question the window asks.
 fn confirm_end_session(app: &AppHandle) {
     let handle = app.clone();
     app.dialog()
-        .message("Everyone watching is disconnected, the agent stops, and the invite code stops working.")
+        .message(format!(
+            "Everyone watching is disconnected, {}, and the invite code stops working.",
+            what_stops(hosted_agent(app))
+        ))
         .title("End the session for everyone?")
         .kind(MessageDialogKind::Warning)
         .buttons(MessageDialogButtons::OkCancelCustom("End Session".into(), "Cancel".into()))
@@ -554,9 +575,10 @@ fn quit(app: &AppHandle) {
     }
     let handle = app.clone();
     app.dialog()
-        .message(
-            "Quitting ends your session. Everyone watching is disconnected and the agent stops.",
-        )
+        .message(format!(
+            "Quitting ends your session. Everyone watching is disconnected and {}.",
+            what_stops(hosted_agent(app))
+        ))
         .title("End the session and quit?")
         .kind(MessageDialogKind::Warning)
         .buttons(MessageDialogButtons::OkCancelCustom(
@@ -727,4 +749,34 @@ pub fn run() {
         RunEvent::Reopen { .. } => open_main_window(app),
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn terminal_is_offered_last_and_always_installed() {
+        // No agents on this PATH; the shell is found anyway.
+        let dir = tempfile::tempdir().unwrap();
+        let mut env: Environment = [("PATH", dir.path())].into_iter().collect();
+        if cfg!(windows) {
+            env.set("SystemRoot", std::env::var_os("SystemRoot").unwrap_or_default());
+        }
+        let agents = agent_infos(&env);
+        let terminal = agents.last().unwrap();
+        assert_eq!(
+            (terminal.id, terminal.name, terminal.installed),
+            (AgentId::Terminal, "Terminal", true)
+        );
+        assert!(!terminal.has_timeline);
+        assert!(agents[..agents.len() - 1].iter().all(|agent| !agent.installed));
+    }
+
+    #[test]
+    fn says_what_ending_a_session_stops() {
+        assert_eq!(what_stops(Some(AgentId::Terminal)), "the shell stops");
+        assert_eq!(what_stops(Some(AgentId::ClaudeCode)), "the agent stops");
+        assert_eq!(what_stops(None), "the agent stops");
+    }
 }

@@ -28,9 +28,36 @@ describe('start screen', () => {
   it('shows which agents are installed and preselects the last used one', () => {
     setup({ lastAgent: 'open-code' });
     const agents = screen.getAllByRole('radio');
-    expect(agents.map((a) => a.textContent)).toEqual(['Claude CodeTimeline and diffs', 'OpenCodeTerminal only', 'ompNot installed']);
+    expect(agents.map((a) => a.textContent)).toEqual(['Claude CodeTimeline and diffs', 'OpenCodeTerminal only', 'ompNot installed', 'TerminalYour shell']);
     expect(screen.getByRole('radio', { name: /OpenCode/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /omp/ })).toBeDisabled();
+  });
+
+  it('preselects Terminal when it was used last', () => {
+    setup({ lastAgent: 'terminal' });
+    expect(screen.getByRole('radio', { name: /^Terminal/ })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('reminds that viewers see everything only for a terminal, without an extra step', async () => {
+    const { bridge } = setup();
+    const reminder = /Everyone you invite sees all output, including any secrets a command prints/;
+    expect(screen.queryByText(reminder)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: /^Terminal/ }));
+    expect(screen.getByText(reminder)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Start a session in webshop' }));
+    expect(bridge.startHosting).toHaveBeenCalledWith('terminal', '/Users/nick/projects/webshop', expect.any(Number), expect.any(Number));
+    await userEvent.click(screen.getByRole('radio', { name: /OpenCode/ }));
+    expect(screen.queryByText(reminder)).not.toBeInTheDocument();
+  });
+
+  it('still offers a terminal when no coding agent is installed', async () => {
+    const agents = demoProfile.agents.map((agent) => (agent.id === 'terminal' ? agent : { ...agent, installed: false }));
+    const { bridge } = setup({ agents, lastAgent: 'claude-code' });
+    expect(screen.getByRole('radio', { name: /^Terminal/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText(/No coding agent is installed\. Install Claude Code, OpenCode or omp for a timeline; you can still share a terminal\./)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Start a session in webshop' }));
+    expect(bridge.startHosting).toHaveBeenCalledWith('terminal', expect.any(String), expect.any(Number), expect.any(Number));
   });
 
   it('starts a session in a recent folder without a dialog', async () => {

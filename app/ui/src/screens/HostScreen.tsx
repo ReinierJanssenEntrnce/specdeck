@@ -11,7 +11,7 @@ import { Toast, useToast } from '../components/Toast';
 import { formatCode, joinLink } from '../model/code';
 import { Workspace, type WorkspaceHandle } from './Workspace';
 
-export const AGENT_NAMES: Record<AgentId, string> = { 'claude-code': 'Claude Code', 'open-code': 'OpenCode', omp: 'omp' };
+export const AGENT_NAMES: Record<AgentId, string> = { 'claude-code': 'Claude Code', 'open-code': 'OpenCode', omp: 'omp', terminal: 'Terminal' };
 
 interface State {
   agent: AgentId | null;
@@ -82,6 +82,7 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
   const onThemeColors = useCallback((fg: string, bg: string) => void bridge.hostSetColors(fg, bg).catch(() => {}), [bridge]);
 
   const agentName = state.agent ? AGENT_NAMES[state.agent] : 'Agent';
+  const terminal = state.agent === 'terminal';
   const statusBar = useMemo(() => statusBarInfo(state.timeline, state.timelineSupported), [state.timeline, state.timelineSupported]);
   const folderName = state.folder.split(/[\\/]/).filter(Boolean).at(-1) ?? state.folder;
   const viewers = state.participants.filter((p) => p.role === 'Viewer').length;
@@ -121,7 +122,7 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
             {agentName} · {state.folder}
           </span>
         </div>
-        <StatusPill status={state.status} agentName={agentName} />
+        <StatusPill status={state.status} agentName={agentName} terminal={terminal} />
         <div className="spacer" />
         <InviteCode
           sharing={state.sharing}
@@ -149,7 +150,7 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
         )}
         {state.exited !== null && (
           <div className="banner info" role="status">
-            {agentName} has exited. Viewers can still read the session; end it when you are done.
+            {terminal ? 'The shell' : agentName} has exited. Viewers can still read the session; end it when you are done.
           </div>
         )}
       </div>
@@ -157,6 +158,7 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
         ref={workspace}
         mode="host"
         agentName={agentName}
+        terminal={terminal}
         timelineSupported={state.timelineSupported}
         timeline={state.timeline}
         participants={state.participants}
@@ -175,7 +177,7 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
       {confirmEnd && (
         <ConfirmDialog title="End the session for everyone?" confirm="End session" danger onConfirm={end} onCancel={() => setConfirmEnd(false)}>
           <p>
-            {agentName} stops
+            {terminal ? 'The shell' : agentName} stops
             {viewers > 0 ? `, and ${viewers === 1 ? '1 viewer is' : `${viewers} viewers are`} disconnected` : ''}. The invite code stops
             working.
           </p>

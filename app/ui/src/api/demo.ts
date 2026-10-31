@@ -20,6 +20,7 @@ export const demoProfile: Profile = {
     { id: 'claude-code', name: 'Claude Code', installed: true, hasTimeline: true },
     { id: 'open-code', name: 'OpenCode', installed: true, hasTimeline: false },
     { id: 'omp', name: 'omp', installed: false, hasTimeline: false },
+    { id: 'terminal', name: 'Terminal', installed: true, hasTimeline: false },
   ],
   hosting: false,
   platform: 'macos',

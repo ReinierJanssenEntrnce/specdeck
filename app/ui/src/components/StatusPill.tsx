@@ -9,11 +9,13 @@ const LABELS: Record<AgentStatus, string> = {
 };
 
 /** What the agent is doing, at a glance. */
-export function StatusPill({ status, agentName }: { status: AgentStatus; agentName: string }) {
+export function StatusPill({ status, agentName, terminal = false }: { status: AgentStatus; agentName: string; terminal?: boolean }) {
   const className = status === 'working' ? 'working' : status === 'waiting' ? 'waiting' : status === 'exited' ? 'ended' : '';
-  const label = status === 'working' ? `${agentName} is working` : LABELS[status];
+  const label = status === 'working' ? `${agentName} is working` : terminal && status === 'exited' ? 'Shell exited' : LABELS[status];
+  // A shell has no activity to share, so there is nothing to explain.
+  const title = status === 'unknown' && !terminal ? `${agentName}'s activity is not shared` : undefined;
   return (
-    <span className={`pill ${className}`} role="status" title={status === 'unknown' ? `${agentName}'s activity is not shared` : undefined}>
+    <span className={`pill ${className}`} role="status" title={title}>
       <span className="dot" aria-hidden />
       {label}
     </span>

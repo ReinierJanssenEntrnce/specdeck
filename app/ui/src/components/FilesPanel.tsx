@@ -7,11 +7,13 @@ interface Props {
   files: TouchedFile[];
   timelineSupported: boolean;
   agentName: string;
+  /** A terminal session, which never lists files. */
+  terminal?: boolean;
   onJump: (outputSeq: number) => void;
 }
 
 /** Every file the agent read or changed; a changed file opens to all its diffs, in order. */
-export function FilesPanel({ files, timelineSupported, agentName, onJump }: Props) {
+export function FilesPanel({ files, timelineSupported, agentName, terminal = false, onJump }: Props) {
   const [open, setOpen] = useState<string | null>(null);
   const file = files.find((f) => f.path === open);
 
@@ -19,7 +21,7 @@ export function FilesPanel({ files, timelineSupported, agentName, onJump }: Prop
     return (
       <div className="empty">
         <Files aria-hidden />
-        <strong>No file list for {agentName}</strong>
+        <strong>{terminal ? 'No file list for a terminal session' : `No file list for ${agentName}`}</strong>
         <span>Touched files are listed for Claude Code sessions.</span>
       </div>
     );

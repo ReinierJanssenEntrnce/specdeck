@@ -1,6 +1,6 @@
 // Types shared with the Rust side (app/src-tauri). Names follow its serde output.
 
-export type AgentId = 'claude-code' | 'open-code' | 'omp';
+export type AgentId = 'claude-code' | 'open-code' | 'omp' | 'terminal';
 export type AgentStatus = 'starting' | 'working' | 'waiting' | 'exited' | 'unknown';
 
 export interface AgentInfo {

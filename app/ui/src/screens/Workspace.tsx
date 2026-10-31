@@ -21,6 +21,8 @@ export interface WorkspaceHandle {
 interface Props {
   mode: 'host' | 'viewer';
   agentName: string;
+  /** A terminal session: texts talk about the shell instead of an agent. */
+  terminal?: boolean;
   timelineSupported: boolean;
   timeline: TimelineEvent[];
   participants: Participant[];
@@ -185,6 +187,7 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
           model={model}
           timelineSupported={props.timelineSupported}
           agentName={props.agentName}
+          terminal={props.terminal}
           matches={new Set(timelineMatches)}
           current={timelineIndex >= 0 ? (timelineMatches[timelineIndex] ?? null) : null}
           onJump={jump}
@@ -195,7 +198,7 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
       id: 'files',
       label: 'Files',
       badge: props.timelineSupported ? model.files.length : undefined,
-      content: <FilesPanel files={model.files} timelineSupported={props.timelineSupported} agentName={props.agentName} onJump={jump} />,
+      content: <FilesPanel files={model.files} timelineSupported={props.timelineSupported} agentName={props.agentName} terminal={props.terminal} onJump={jump} />,
     },
     {
       id: 'people',
