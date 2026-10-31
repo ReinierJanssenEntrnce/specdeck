@@ -70,7 +70,7 @@ pub fn launch(options: &LaunchOptions, env: &Environment) -> Result<AgentProcess
     command.args(&options.extra_args);
     command.cwd(&options.folder);
     command.env_clear();
-    for (name, value) in env.iter() {
+    for (name, value) in env.iter().filter(|(name, _)| !is_parent_session_marker(name)) {
         command.env(name, value);
     }
     command.env("TERM", "xterm-256color");
@@ -85,6 +85,27 @@ pub fn launch(options: &LaunchOptions, env: &Environment) -> Result<AgentProcess
     let reader = pty.master.try_clone_reader().map_err(|e| LaunchError::Pty(e.to_string()))?;
     let writer = pty.master.take_writer().map_err(|e| LaunchError::Pty(e.to_string()))?;
     Ok(AgentProcess { master: pty.master, child, reader, writer })
+}
+
+/// Variables a running Claude Code session sets for the processes it starts. When SpecDeck itself
+/// was started from such a session, passing them on makes the hosted agent believe it is that
+/// session's child (it then turns off saving its transcript, among other things). Configuration a
+/// user sets themselves, such as `CLAUDE_CODE_USE_BEDROCK`, is passed on.
+const PARENT_SESSION_MARKERS: &[&str] = &[
+    "CLAUDECODE",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_EXECPATH",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_SSE_PORT",
+    "CLAUDE_PID",
+];
+
+fn is_parent_session_marker(name: &std::ffi::OsStr) -> bool {
+    PARENT_SESSION_MARKERS.iter().any(|marker| name == *marker)
 }
 
 /// Batch files (npm installs `claude.cmd` on Windows) cannot be started directly in ConPTY.
@@ -156,6 +177,28 @@ mod tests {
         assert!(output.contains("test=yes"), "{output}");
         assert!(output.contains("term=xterm-256color"), "{output}");
         assert!(process.child.wait().unwrap().success());
+    }
+
+    #[test]
+    fn a_parent_claude_code_session_is_not_passed_on() {
+        let bin = tempfile::tempdir().unwrap();
+        fake_executable(
+            bin.path(),
+            "omp",
+            r#"echo "marker=$CLAUDECODE child=$CLAUDE_CODE_CHILD_SESSION own=$CLAUDE_CODE_USE_BEDROCK end""#,
+        );
+        let env: Environment = [
+            ("PATH", bin.path().as_os_str()),
+            ("CLAUDECODE", "1".as_ref()),
+            ("CLAUDE_CODE_CHILD_SESSION", "1".as_ref()),
+            ("CLAUDE_CODE_USE_BEDROCK", "1".as_ref()),
+        ]
+        .into_iter()
+        .collect();
+
+        let mut process = launch(&options(AgentId::Omp, bin.path()), &env).unwrap();
+        let output = read_until(&mut process.reader, "end");
+        assert!(output.contains("marker= child= own=1 end"), "{output}");
     }
 
     #[test]
