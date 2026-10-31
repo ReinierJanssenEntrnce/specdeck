@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TimelineEvent } from '../api/types';
-import { buildTimeline, toolSummary, turnText } from './timeline';
+import { buildTimeline, latestUsage, toolSummary, turnText } from './timeline';
 
 let at = 1000;
 const stamp = () => ({ outputSeq: at - 1000, at: at++ });
@@ -63,5 +63,36 @@ describe('timeline model', () => {
     expect(bash && bash.kind === 'tool' && toolSummary(bash)).toBe('echo $PROBE');
     expect(turnText(turn)).toContain('Writing the file.');
     expect(turnText(turn)).toContain('echo $PROBE');
+  });
+});
+
+describe('usage', () => {
+  const usage = (input: number, output: number, contextTokens?: number): TimelineEvent => ({
+    ...stamp(),
+    kind: 'usage',
+    tokens: { input, output, cacheRead: 0, cacheWrite: 0 },
+    contextTokens,
+    contextWindow: contextTokens === undefined ? undefined : 200_000,
+  });
+
+  it('gives each prompt the tokens used since it started', () => {
+    const { turns, usage: latest } = buildTimeline([
+      { ...stamp(), kind: 'prompt', promptId: 'p1', text: 'one' },
+      usage(100, 20, 120),
+      usage(300, 50, 350),
+      { ...stamp(), kind: 'prompt', promptId: 'p2', text: 'two' },
+      { ...stamp(), kind: 'prompt', promptId: 'p3', text: 'three' },
+      usage(400, 90, 490),
+    ]);
+    expect(turns.map((turn) => turn.tokens)).toEqual([350, null, 140]);
+    expect(latest).toMatchObject({ available: true, total: 490, contextTokens: 490, contextWindow: 200_000 });
+  });
+
+  it('is unknown until reported, and can become unavailable', () => {
+    expect(buildTimeline(editSession).usage).toBeNull();
+    const events: TimelineEvent[] = [usage(10, 1), { ...stamp(), kind: 'usage-unavailable', reason: 'A line is not valid JSON' }];
+    expect(buildTimeline(events).usage).toEqual({ available: false, reason: 'A line is not valid JSON' });
+    expect(latestUsage(events)).toEqual(buildTimeline(events).usage);
+    expect(latestUsage(events.slice(0, 1))).toMatchObject({ available: true, total: 11 });
   });
 });

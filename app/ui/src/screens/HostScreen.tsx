@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, Copy, Link2, Power, RefreshCw } from 'lucide-react';
 import { errorMessage, useBridge } from '../api/bridge';
 import type { AgentId, AgentStatus, HostEvent, Participant, SharingState, TimelineEvent } from '../api/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { StatusPill } from '../components/StatusPill';
+import { UsageMeter } from '../components/UsageMeter';
+import { latestUsage } from '../model/timeline';
 import { Toast, useToast } from '../components/Toast';
 import { formatCode, joinLink } from '../model/code';
 import { Workspace, type WorkspaceHandle } from './Workspace';
@@ -79,6 +81,7 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
   const onThemeColors = useCallback((fg: string, bg: string) => void bridge.hostSetColors(fg, bg).catch(() => {}), [bridge]);
 
   const agentName = state.agent ? AGENT_NAMES[state.agent] : 'Agent';
+  const usage = useMemo(() => latestUsage(state.timeline), [state.timeline]);
   const folderName = state.folder.split(/[\\/]/).filter(Boolean).at(-1) ?? state.folder;
   const viewers = state.participants.filter((p) => p.role === 'Viewer').length;
 
@@ -107,6 +110,7 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
           </span>
         </div>
         <StatusPill status={state.status} agentName={agentName} />
+        {state.timelineSupported && <UsageMeter usage={usage} />}
         <div className="spacer" />
         <InviteCode
           sharing={state.sharing}

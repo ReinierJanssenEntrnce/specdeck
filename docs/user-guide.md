@@ -79,5 +79,6 @@ If your connection drops, SpecDeck reconnects on its own and catches up; you do 
 | See which files changed | Open **Files**. Select a changed file to see all its diffs in order |
 | Copy | Select text in the terminal, the timeline or a diff and copy it as usual. Copying never sends anything to the session |
 | Make the side panel wider or narrower | Drag the line between the terminal and the side panel |
+| See how much the agent has used | For Claude Code, the toolbar shows how full its context window is and the tokens used in the session; hover over it for the details. Each prompt in the **Timeline** shows the tokens it used. Most of the total is context the agent reads again from its cache on every call. OpenCode and omp do not report usage |
 
 What you scroll, search or open only changes your own view.

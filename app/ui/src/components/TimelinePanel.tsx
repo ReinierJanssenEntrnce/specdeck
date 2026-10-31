@@ -3,6 +3,7 @@ import { AlertTriangle, Check, CircleSlash, History, Loader, X } from 'lucide-re
 import type { TimelineModel, ToolItem, Turn } from '../model/timeline';
 import { toolSummary } from '../model/timeline';
 import { DiffView } from './DiffView';
+import { formatTokens } from './UsageMeter';
 import { Markdown } from './Markdown';
 
 interface Props {
@@ -119,7 +120,10 @@ function TurnView({ turn, number, match, current, onJump }: { turn: Turn; number
       <button className="prompt" onClick={() => onJump(turn.outputSeq)} title="Show in the terminal">
         <span className="meta">
           <span>Prompt {number}</span>
-          <span>{turn.at ? TIME.format(turn.at) : ''}</span>
+          <span>
+            {turn.tokens ? <span title={`${turn.tokens.toLocaleString()} tokens used for this prompt`}>{formatTokens(turn.tokens)} tokens · </span> : null}
+            {turn.at ? TIME.format(turn.at) : ''}
+          </span>
         </span>
         <span className="text selectable">{turn.prompt || 'Earlier prompt'}</span>
       </button>

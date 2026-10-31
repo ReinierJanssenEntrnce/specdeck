@@ -41,6 +41,14 @@ export interface DiffHunk {
 
 type Stamp = { outputSeq: number; at: number };
 
+/** Tokens used in a session, summed over every model call, subagents included. */
+export interface TokenCounts {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
 export type TimelineEvent = Stamp &
   (
     | { kind: 'session-started' }
@@ -54,6 +62,8 @@ export type TimelineEvent = Stamp &
     | { kind: 'file-read'; promptId: string; toolUseId: string; path: string }
     | { kind: 'timeline-unavailable'; reason: string }
     | { kind: 'timeline-available' }
+    | { kind: 'usage'; tokens: TokenCounts; contextTokens?: number; contextWindow?: number }
+    | { kind: 'usage-unavailable'; reason: string }
   );
 
 export type SharingState = 'connecting' | 'ready' | 'unavailable';

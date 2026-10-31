@@ -1,8 +1,10 @@
-import { useEffect, useReducer, useRef } from 'react';
+import { useEffect, useMemo, useReducer, useRef } from 'react';
 import { AlertTriangle, Eye, LogOut, WifiOff } from 'lucide-react';
 import { errorMessage, useBridge } from '../api/bridge';
 import type { AgentId, AgentStatus, EndReason, Participant, TimelineEvent, ViewEvent } from '../api/types';
 import { StatusPill } from '../components/StatusPill';
+import { UsageMeter } from '../components/UsageMeter';
+import { latestUsage } from '../model/timeline';
 import { formatCode } from '../model/code';
 import { AGENT_NAMES } from './HostScreen';
 import { Workspace, type WorkspaceHandle } from './Workspace';
@@ -105,6 +107,7 @@ export function ViewerScreen({ code, onLeave }: Props) {
   const host = state.participants.find((p) => p.role === 'Host');
   const agentName = state.agent ? AGENT_NAMES[state.agent] : 'the agent';
   const ending = state.ended ? END_MESSAGES[state.ended] : null;
+  const usage = useMemo(() => latestUsage(state.timeline), [state.timeline]);
 
   // Ended before ever joining: explain, and offer to try again.
   if (ending && !ending.keepReading && state.viewerId === undefined) {
@@ -143,6 +146,7 @@ export function ViewerScreen({ code, onLeave }: Props) {
         </span>
         {state.phase !== 'joining' && state.phase !== 'ended' && <StatusPill status={state.status} agentName={AGENT_NAMES[state.agent ?? 'claude-code']} />}
         {state.phase === 'ended' && <span className="pill ended">Ended</span>}
+        {state.timelineSupported && <UsageMeter usage={usage} />}
         <div className="spacer" />
         <button className="btn" onClick={leave}>
           <LogOut aria-hidden /> Leave

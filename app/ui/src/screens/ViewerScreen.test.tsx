@@ -93,4 +93,25 @@ describe('viewer screen', () => {
     expect(bridge.leaveSession).toHaveBeenCalled();
     await waitFor(() => expect(onLeave).toHaveBeenCalledWith());
   });
+
+  it('shows the session usage to viewers', () => {
+    setup();
+    join();
+    act(() =>
+      emit({
+        type: 'timeline',
+        event: { outputSeq: 0, at: 1, kind: 'usage', tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }, contextTokens: 100_000, contextWindow: 200_000 },
+      }),
+    );
+    expect(screen.getByRole('meter', { name: 'Context window' })).toHaveAttribute('aria-valuenow', '50');
+  });
+
+  it('shows no usage for an agent without a timeline', () => {
+    setup();
+    act(() => {
+      emit({ type: 'joined', viewerId: 2, agent: 'open-code', timelineSupported: false, cols: 100, rows: 30 });
+      emit({ type: 'timeline', event: { outputSeq: 0, at: 1, kind: 'usage', tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } } });
+    });
+    expect(screen.queryByText(/tokens/)).toBeNull();
+  });
 });
