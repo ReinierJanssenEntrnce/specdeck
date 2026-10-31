@@ -99,4 +99,10 @@ describe('menu commands', () => {
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+
+  it('styles the window for its platform and material', async () => {
+    await setup('start', { getProfile: async () => ({ ...(await fakeBridge().getProfile()), platform: 'windows', translucent: true }) });
+    expect(document.documentElement.dataset.platform).toBe('windows');
+    expect(document.documentElement).toHaveClass('translucent');
+  });
 });

@@ -15,6 +15,7 @@ export const demoProfile: Profile = {
   ],
   lastAgent: 'claude-code',
   notifications: true,
+  translucent: false,
   agents: [
     { id: 'claude-code', name: 'Claude Code', installed: true, hasTimeline: true },
     { id: 'open-code', name: 'OpenCode', installed: true, hasTimeline: false },

@@ -23,6 +23,8 @@ export interface Profile {
   hosting: boolean;
   /** Whether to show OS notifications while the window is not in front. */
   notifications: boolean;
+  /** The window has the platform's material behind it (macOS vibrancy, Windows Mica). */
+  translucent: boolean;
   platform: string;
 }
 

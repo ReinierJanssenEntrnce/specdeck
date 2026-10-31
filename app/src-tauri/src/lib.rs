@@ -7,6 +7,7 @@ mod tray;
 mod viewer;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::Serialize;
@@ -42,6 +43,8 @@ struct AppState {
     environment: Arc<OnceLock<Environment>>,
     host: Mutex<Option<HostRuntime>>,
     viewer: Mutex<Option<ViewerRuntime>>,
+    /// The main window shows the desktop through it (macOS vibrancy, Windows 11 Mica).
+    translucent: AtomicBool,
 }
 
 impl AppState {
@@ -81,6 +84,8 @@ struct Profile {
     /// Set while a session is hosted, so a reopened window goes straight back to it.
     hosting: bool,
     notifications: bool,
+    /// The window has a material behind it, so the UI may let it show through.
+    translucent: bool,
     platform: &'static str,
 }
 
@@ -112,6 +117,7 @@ fn profile(state: &AppState) -> Profile {
         agents,
         hosting: state.host.lock().unwrap().is_some(),
         notifications: settings.notifications,
+        translucent: state.translucent.load(Ordering::Relaxed),
         platform: std::env::consts::OS,
     }
 }
@@ -384,11 +390,50 @@ fn open_main_window(app: &AppHandle) {
         let _ = window.set_focus();
         return;
     }
-    let _ = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+    let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
         .title(window_title())
         .inner_size(1200.0, 800.0)
-        .min_inner_size(720.0, 480.0)
-        .build();
+        .min_inner_size(720.0, 480.0);
+    // macOS: the toolbar is the title bar, with the window buttons centred in it.
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(16.0, 20.0));
+    }
+    // Transparent only where a material can fill it; Linux stays opaque.
+    if cfg!(any(target_os = "macos", target_os = "windows")) {
+        builder = builder.transparent(true);
+    }
+    let Ok(window) = builder.build() else { return };
+    let translucent = apply_material(&window);
+    app.state::<AppState>().translucent.store(translucent, Ordering::Relaxed);
+}
+
+/// Puts the platform's window material behind the page: the sidebar vibrancy on macOS, Mica on
+/// Windows 11. Returns whether it worked; without it the page keeps an opaque background.
+fn apply_material(window: &tauri::WebviewWindow) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use window_vibrancy::{NSVisualEffectMaterial, NSVisualEffectState};
+        window_vibrancy::apply_vibrancy(
+            window,
+            NSVisualEffectMaterial::Sidebar,
+            Some(NSVisualEffectState::FollowsWindowActiveState),
+            None,
+        )
+        .is_ok()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        window_vibrancy::apply_mica(window, None).is_ok()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = window;
+        false
+    }
 }
 
 /// Rebuilds the menu from the recent folders and whether a session is hosted.
@@ -548,10 +593,9 @@ pub fn run() {
                 environment,
                 host: Mutex::new(None),
                 viewer: Mutex::new(None),
+                translucent: AtomicBool::new(false),
             });
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_title(&window_title());
-            }
+            open_main_window(app.handle());
             refresh_menu(app.handle());
             // A click on a notification brings the session to the front.
             let handle = app.handle().clone();

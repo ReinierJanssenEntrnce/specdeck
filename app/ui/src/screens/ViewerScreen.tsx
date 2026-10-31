@@ -134,8 +134,8 @@ export function ViewerScreen({ code, onLeave }: Props) {
 
   return (
     <div className="session">
-      <header className="toolbar">
-        <div className="title">
+      <header className="toolbar" data-tauri-drag-region>
+        <div className="title" data-tauri-drag-region>
           <strong>{host ? `${host.label}'s session` : 'Joining session…'}</strong>
           <span>
             {state.agent ? AGENT_NAMES[state.agent] : 'Invite code'} · {formatCode(code)}

@@ -114,8 +114,8 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
 
   return (
     <div className="session">
-      <header className="toolbar">
-        <div className="title">
+      <header className="toolbar" data-tauri-drag-region>
+        <div className="title" data-tauri-drag-region>
           <strong title={state.folder}>{folderName || 'Starting…'}</strong>
           <span>
             {agentName} · {state.folder}

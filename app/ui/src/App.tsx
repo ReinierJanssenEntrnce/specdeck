@@ -26,6 +26,9 @@ export function App() {
   const refresh = () =>
     bridge.getProfile().then((p) => {
       setProfile(p);
+      // Styles that depend on the platform and on the window's material.
+      document.documentElement.dataset.platform = p.platform;
+      document.documentElement.classList.toggle('translucent', p.translucent);
       return p;
     });
 
@@ -80,6 +83,8 @@ export function App() {
           onLeave={(retry) => setScreen(retry ? { kind: 'start', code: retry.code, joinError: retry.message } : { kind: 'start' })}
         />
       )}
+      {/* Without a toolbar the top of the window is where it is dragged (macOS title bar). */}
+      {screen.kind === 'start' && <div className="drag-strip" data-tauri-drag-region />}
       {screen.kind === 'start' && (
         <StartScreen
           profile={profile}
