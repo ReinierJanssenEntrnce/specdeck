@@ -4,7 +4,7 @@ SpecDeck lets one person (the **host**) run a coding agent (Claude Code, OpenCod
 
 This is SpecDeck 1.x, a native rewrite of the Electron app (0.x, in `../claude-share`) on Tauri 2 with a Rust session engine. 1.x and 0.x cannot join each other's sessions.
 
-Status: in development. What is being built is in [`openspec/changes/native-shared-session-mvp`](openspec/changes/native-shared-session-mvp) (proposal, specs, design and tasks).
+How to use the app: [docs/user-guide.md](docs/user-guide.md). Status: in development. What is being built is in [`openspec/changes/native-shared-session-mvp`](openspec/changes/native-shared-session-mvp) (proposal, specs, design and tasks).
 
 ## Repository layout
 
@@ -32,13 +32,16 @@ just fmt       # format the Rust code
 just package   # build installers for this platform (target/release/bundle)
 ```
 
-Run `just` to list all recipes. For the server side on your own machine (Colima with Kubernetes, `colima start --kubernetes`):
+Run `just` to list all recipes. To try sharing on your own machine (Colima with Kubernetes, `colima start --kubernetes`):
 
 ```sh
-just local-up      # deploy signalling and coturn to Colima's k3s
+just local-dev     # signalling and coturn on Colima's k3s, plus a host app and a viewer app
+just local-up      # only deploy signalling and coturn to Colima's k3s
 just local-test    # check that two peers connect through the relay only
 just local-down    # remove the deployment
 ```
+
+`just local-dev` opens two windows, **SpecDeck (host)** and **SpecDeck (viewer)**, each with its own settings (`SPECDECK_PROFILE`, debug builds only). Host a session in one and join with its invite code in the other. To look at the UI without a session, run `pnpm --filter @specdeck/ui dev` and open `http://localhost:5173/?demo=start`, `?demo=host` or `?demo=viewer` in a browser.
 
 See [`deploy/k8s/README.md`](deploy/k8s/README.md) for ports, secrets and the differences from a real cluster.
 

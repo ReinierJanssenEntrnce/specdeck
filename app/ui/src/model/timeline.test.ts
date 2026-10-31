@@ -1,0 +1,67 @@
+import { describe, expect, it } from 'vitest';
+import type { TimelineEvent } from '../api/types';
+import { buildTimeline, toolSummary, turnText } from './timeline';
+
+let at = 1000;
+const stamp = () => ({ outputSeq: at - 1000, at: at++ });
+
+// The edit session recorded from Claude Code (crates/core/tests/fixtures/claude-hooks).
+const editSession: TimelineEvent[] = [
+  { ...stamp(), kind: 'session-started' },
+  { ...stamp(), kind: 'prompt', promptId: 'p1', text: 'Write notes.txt, then change it' },
+  { ...stamp(), kind: 'message', promptId: 'p1', messageId: 'm1', text: 'Writing ', final: false },
+  { ...stamp(), kind: 'message', promptId: 'p1', messageId: 'm1', text: 'the file.', final: true },
+  { ...stamp(), kind: 'tool-call', promptId: 'p1', toolUseId: 't1', toolName: 'Write', input: { file_path: 'notes.txt', content: 'one\n' } },
+  { ...stamp(), kind: 'tool-result', promptId: 'p1', toolUseId: 't1', status: 'succeeded' },
+  { ...stamp(), kind: 'file-change', promptId: 'p1', toolUseId: 't1', path: 'notes.txt', change: 'created', hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 1, lines: ['+one'] }] },
+  { ...stamp(), kind: 'tool-call', promptId: 'p1', toolUseId: 't2', toolName: 'Edit', input: { file_path: 'notes.txt' } },
+  { ...stamp(), kind: 'tool-result', promptId: 'p1', toolUseId: 't2', status: 'succeeded' },
+  { ...stamp(), kind: 'file-change', promptId: 'p1', toolUseId: 't2', path: 'notes.txt', change: 'edited', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-one', '+two'] }] },
+  { ...stamp(), kind: 'tool-call', promptId: 'p1', toolUseId: 't3', toolName: 'Bash', input: { command: 'echo $PROBE' } },
+  { ...stamp(), kind: 'tool-result', promptId: 'p1', toolUseId: 't3', status: 'not-run' },
+  { ...stamp(), kind: 'tool-call', promptId: 'p1', toolUseId: 't4', toolName: 'Read', input: { file_path: 'README.md' } },
+  { ...stamp(), kind: 'tool-result', promptId: 'p1', toolUseId: 't4', status: 'succeeded' },
+  { ...stamp(), kind: 'file-read', promptId: 'p1', toolUseId: 't4', path: 'README.md' },
+  { ...stamp(), kind: 'response', promptId: 'p1', text: 'I wrote notes.txt and changed it.' },
+];
+
+describe('timeline model', () => {
+  it('groups a prompt with its text and tool calls in order', () => {
+    const { turns } = buildTimeline(editSession);
+    expect(turns).toHaveLength(1);
+    const turn = turns[0]!;
+    expect(turn.prompt).toBe('Write notes.txt, then change it');
+    expect(turn.items.map((item) => item.kind)).toEqual(['text', 'tool', 'tool', 'tool', 'tool']);
+    expect(turn.items[0]).toMatchObject({ kind: 'text', text: 'Writing the file.' });
+    expect(turn.response).toBe('I wrote notes.txt and changed it.');
+  });
+
+  it('pairs tool calls with their results', () => {
+    const tools = buildTimeline(editSession).turns[0]!.items.filter((item) => item.kind === 'tool');
+    expect(tools.map((tool) => tool.status)).toEqual(['succeeded', 'succeeded', 'not-run', 'succeeded']);
+    expect(tools[0]!.changes[0]!.change).toBe('created');
+  });
+
+  it('lists touched files, changed ones first, with every diff in order', () => {
+    const { files } = buildTimeline(editSession);
+    expect(files.map((file) => [file.path, file.readOnly])).toEqual([
+      ['notes.txt', false],
+      ['README.md', true],
+    ]);
+    expect(files[0]!.changes.map((change) => change.change)).toEqual(['created', 'edited']);
+  });
+
+  it('tracks when the timeline is unavailable and available again', () => {
+    const unavailable: TimelineEvent = { ...stamp(), kind: 'timeline-unavailable', reason: 'No events arrived from the agent.' };
+    expect(buildTimeline([unavailable]).unavailable).toBe('No events arrived from the agent.');
+    expect(buildTimeline([unavailable, { ...stamp(), kind: 'timeline-available' }]).unavailable).toBeNull();
+  });
+
+  it('summarises tool calls and makes turns searchable', () => {
+    const turn = buildTimeline(editSession).turns[0]!;
+    const bash = turn.items.find((item) => item.kind === 'tool' && item.toolName === 'Bash');
+    expect(bash && bash.kind === 'tool' && toolSummary(bash)).toBe('echo $PROBE');
+    expect(turnText(turn)).toContain('Writing the file.');
+    expect(turnText(turn)).toContain('echo $PROBE');
+  });
+});

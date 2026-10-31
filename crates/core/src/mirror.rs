@@ -10,7 +10,8 @@ use std::sync::{Arc, Mutex};
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::term::test::TermSize;
 use alacritty_terminal::term::{Config, Term};
-use alacritty_terminal::vte::ansi::{Processor, Rgb};
+use alacritty_terminal::vte::ansi::Processor;
+pub use alacritty_terminal::vte::ansi::Rgb;
 
 /// Cell size reported for text-area size queries; there is no real screen.
 const CELL_WIDTH: u16 = 8;

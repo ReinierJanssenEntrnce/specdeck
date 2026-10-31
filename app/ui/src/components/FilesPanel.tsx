@@ -1,0 +1,75 @@
+import { useState } from 'react';
+import { ArrowLeft, Eye, FilePen, FilePlus, Files } from 'lucide-react';
+import type { TouchedFile } from '../model/timeline';
+import { DiffView } from './DiffView';
+
+interface Props {
+  files: TouchedFile[];
+  timelineSupported: boolean;
+  agentName: string;
+  onJump: (outputSeq: number) => void;
+}
+
+/** Every file the agent read or changed; a changed file opens to all its diffs, in order. */
+export function FilesPanel({ files, timelineSupported, agentName, onJump }: Props) {
+  const [open, setOpen] = useState<string | null>(null);
+  const file = files.find((f) => f.path === open);
+
+  if (!timelineSupported) {
+    return (
+      <div className="empty">
+        <Files aria-hidden />
+        <strong>No file list for {agentName}</strong>
+        <span>Touched files are listed for Claude Code sessions.</span>
+      </div>
+    );
+  }
+  if (files.length === 0) {
+    return (
+      <div className="empty">
+        <Files aria-hidden />
+        <strong>No files touched yet</strong>
+        <span>Files the agent reads or changes are listed here, with their diffs.</span>
+      </div>
+    );
+  }
+  if (file && !file.readOnly) {
+    return (
+      <div className="file-detail">
+        <button className="btn ghost small" onClick={() => setOpen(null)} style={{ justifySelf: 'start' }}>
+          <ArrowLeft aria-hidden /> All files
+        </button>
+        <strong className="selectable" style={{ fontFamily: 'var(--mono)', fontSize: 12.5 }}>
+          {file.path}
+        </strong>
+        {file.changes.map((change, i) => (
+          <div key={i} style={{ display: 'grid', gap: 4 }}>
+            <button className="btn ghost small" style={{ justifySelf: 'start' }} onClick={() => onJump(change.outputSeq)}>
+              Change {i + 1} of {file.changes.length} · show in terminal
+            </button>
+            <DiffView change={change} showPath={false} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <ul className="files" aria-label="Touched files">
+      {files.map((f) => {
+        const created = f.changes.some((c) => c.change === 'created');
+        const Icon = f.readOnly ? Eye : created ? FilePlus : FilePen;
+        return (
+          <li key={f.path}>
+            <button onClick={() => !f.readOnly && setOpen(f.path)} disabled={f.readOnly} aria-label={`${f.path}, ${f.readOnly ? 'read' : f.changes.length === 1 ? '1 change' : `${f.changes.length} changes`}`}>
+              <Icon aria-hidden />
+              <span className="path" title={f.path}>
+                {f.path}
+              </span>
+              <span className="tag">{f.readOnly ? 'read' : f.changes.length === 1 ? (created ? 'new' : '1 change') : `${f.changes.length} changes`}</span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}

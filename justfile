@@ -52,3 +52,19 @@ local-test: local-up
     trap 'kill $! 2>/dev/null || true' EXIT
     until curl -sf http://127.0.0.1:18081/health >/dev/null; do sleep 0.25; done
     SPECDECK_SIGNALLING_URL=ws://127.0.0.1:18081/signal cargo test -p specdeck-core --test turn_relay -- --ignored --nocapture
+
+# Local test setup: signalling and coturn on Colima's k3s, plus a host app and a viewer app (own settings each)
+local-dev: local-up
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+    scripts/local-kubectl.sh -n specdeck1-local port-forward svc/specdeck-signalling 18081:8080 >/dev/null &
+    until curl -sf http://127.0.0.1:18081/health >/dev/null; do sleep 0.25; done
+    export SPECDECK_SIGNALLING_URL=ws://127.0.0.1:18081/signal
+    mkdir -p .local-dev
+    SPECDECK_PROFILE=host pnpm tauri dev 2>&1 | tee .local-dev/host.log &
+    # The viewer is a second instance of the same debug build, loading the host's dev server.
+    until curl -sf http://localhost:5173 >/dev/null && pgrep -f target/debug/specdeck-app >/dev/null; do sleep 0.5; done
+    SPECDECK_PROFILE=viewer target/debug/specdeck-app 2>&1 | tee .local-dev/viewer.log &
+    echo "SpecDeck (host) and SpecDeck (viewer) are starting. Close this with Ctrl+C."
+    wait

@@ -1,0 +1,223 @@
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { Terminal, type ITheme } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
+import { WebLinksAddon } from '@xterm/addon-web-links';
+import '@xterm/xterm/css/xterm.css';
+import type { TerminalStep } from './stream';
+
+export interface SearchResult {
+  index: number;
+  count: number;
+}
+
+export interface TerminalHandle {
+  /** Applies records in order; each step is one record of the session's output log. */
+  write(steps: TerminalStep[]): void;
+  /** Clears everything, before a replay from the start. */
+  reset(): void;
+  findNext(term: string): void;
+  findPrevious(term: string): void;
+  clearSearch(): void;
+  /** Scrolls to where the output stood when record `seq` was the newest. */
+  scrollToSeq(seq: number): void;
+  scrollToBottom(): void;
+  focus(): void;
+}
+
+interface Props {
+  /** The host's terminal fits its pane and takes input; a viewer's keeps the host's size. */
+  mode: 'host' | 'viewer';
+  onData?: (data: string) => void;
+  onResize?: (cols: number, rows: number) => void;
+  /** Whether the view follows the latest output. */
+  onFollowChange?: (following: boolean) => void;
+  /** Output arrived while the viewer was scrolled away from the latest. */
+  onNewOutput?: () => void;
+  onSearchResults?: (result: SearchResult) => void;
+  /** The terminal's colours, for answering colour queries while no window is attached. */
+  onThemeColors?: (foreground: string, background: string) => void;
+}
+
+/** ANSI palettes tuned for the app's light and dark surfaces. */
+const PALETTE_LIGHT = {
+  black: '#1b1f27', red: '#c0392b', green: '#1d7a55', yellow: '#9a6700', blue: '#3d5a99', magenta: '#8e44ad', cyan: '#0e7490', white: '#d0d4da',
+  brightBlack: '#5d6573', brightRed: '#e0473a', brightGreen: '#2a9d6b', brightYellow: '#b7791f', brightBlue: '#4f6fb8', brightMagenta: '#a55bc4', brightCyan: '#1693ad', brightWhite: '#f4f5f7',
+};
+const PALETTE_DARK = {
+  black: '#1d2025', red: '#ff7b6b', green: '#5cc595', yellow: '#f0b14f', blue: '#8ea6e0', magenta: '#c49be8', cyan: '#5fc6d8', white: '#c9ced6',
+  brightBlack: '#6f7682', brightRed: '#ff9a8d', brightGreen: '#7fd8aa', brightYellow: '#f7c977', brightBlue: '#adc0ee', brightMagenta: '#d7b6f2', brightCyan: '#86d8e6', brightWhite: '#f2f4f7',
+};
+
+function cssVar(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function currentTheme(): ITheme {
+  const dark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+  return {
+    ...(dark ? PALETTE_DARK : PALETTE_LIGHT),
+    background: cssVar('--terminal-bg') || (dark ? '#121417' : '#fbfbfc'),
+    foreground: cssVar('--terminal-fg') || (dark ? '#dfe3e8' : '#1b1f27'),
+    cursor: cssVar('--terminal-cursor') || '#3d5a99',
+    cursorAccent: cssVar('--terminal-bg') || '#fbfbfc',
+    selectionBackground: cssVar('--terminal-selection') || 'rgba(61, 90, 153, 0.25)',
+  };
+}
+
+export const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(props, ref) {
+  const container = useRef<HTMLDivElement>(null);
+  const terminal = useRef<Terminal | null>(null);
+  const search = useRef<SearchAddon | null>(null);
+  // lineAfter[seq]: the absolute line the cursor was on after record `seq` was written.
+  const lineAfter = useRef<number[]>([]);
+  const following = useRef(true);
+  const callbacks = useRef(props);
+  callbacks.current = props;
+
+  useEffect(() => {
+    const element = container.current;
+    if (!element) return;
+    const term = new Terminal({
+      allowProposedApi: true,
+      cursorBlink: props.mode === 'host',
+      disableStdin: props.mode === 'viewer',
+      fontFamily: cssVar('--mono') || 'Menlo, monospace',
+      fontSize: 13,
+      lineHeight: 1.15,
+      scrollback: 100_000,
+      theme: currentTheme(),
+      macOptionIsMeta: true,
+    });
+    const fit = new FitAddon();
+    const searchAddon = new SearchAddon();
+    term.loadAddon(fit);
+    term.loadAddon(searchAddon);
+    term.loadAddon(new WebLinksAddon());
+    term.open(element);
+    terminal.current = term;
+    search.current = searchAddon;
+
+    const report = () => {
+      const buffer = term.buffer.active;
+      const nowFollowing = buffer.viewportY >= buffer.baseY;
+      if (nowFollowing !== following.current) {
+        following.current = nowFollowing;
+        callbacks.current.onFollowChange?.(nowFollowing);
+      }
+    };
+    const disposables = [
+      term.onScroll(report),
+      term.onWriteParsed(report),
+      searchAddon.onDidChangeResults(({ resultIndex, resultCount }) =>
+        callbacks.current.onSearchResults?.({ index: resultIndex, count: resultCount }),
+      ),
+      // A viewer's terminal still answers queries locally; those answers go nowhere.
+      term.onData((data) => {
+        if (props.mode === 'host') callbacks.current.onData?.(data);
+      }),
+    ];
+    element.addEventListener('wheel', () => requestAnimationFrame(report), { passive: true });
+
+    let resizeObserver: ResizeObserver | undefined;
+    if (props.mode === 'host') {
+      let pending: number | undefined;
+      const fitNow = () => {
+        try {
+          fit.fit();
+        } catch {
+          return;
+        }
+        callbacks.current.onResize?.(term.cols, term.rows);
+      };
+      resizeObserver = new ResizeObserver(() => {
+        window.clearTimeout(pending);
+        pending = window.setTimeout(fitNow, 60);
+      });
+      resizeObserver.observe(element);
+      fitNow();
+    }
+
+    const media = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const applyTheme = () => {
+      const theme = currentTheme();
+      term.options.theme = theme;
+      callbacks.current.onThemeColors?.(theme.foreground ?? '#000000', theme.background ?? '#ffffff');
+    };
+    applyTheme();
+    media?.addEventListener('change', applyTheme);
+
+    return () => {
+      media?.removeEventListener('change', applyTheme);
+      resizeObserver?.disconnect();
+      disposables.forEach((d) => d.dispose());
+      term.dispose();
+      terminal.current = null;
+    };
+    // The mode is fixed for the life of a session screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    write(steps) {
+      const term = terminal.current;
+      if (!term) return;
+      for (const step of steps) {
+        if ('resize' in step) {
+          const [cols, rows] = step.resize;
+          // The host's own pane decides its size; it follows records only during a replay.
+          if (props.mode === 'viewer' || cols !== term.cols || rows !== term.rows) term.resize(cols, rows);
+          lineAfter.current.push(lineAfter.current.at(-1) ?? 0);
+        } else {
+          const wasFollowing = following.current;
+          term.write(step.output, () => {
+            const buffer = term.buffer.active;
+            lineAfter.current.push(buffer.baseY + buffer.cursorY);
+          });
+          if (!wasFollowing) callbacks.current.onNewOutput?.();
+        }
+      }
+    },
+    reset() {
+      terminal.current?.reset();
+      terminal.current?.clear();
+      lineAfter.current = [];
+    },
+    findNext(term) {
+      search.current?.findNext(term, searchOptions());
+    },
+    findPrevious(term) {
+      search.current?.findPrevious(term, searchOptions());
+    },
+    clearSearch() {
+      search.current?.clearDecorations();
+    },
+    scrollToSeq(seq) {
+      const term = terminal.current;
+      if (!term) return;
+      const lines = lineAfter.current;
+      const line = seq < 0 ? 0 : (lines[Math.min(seq, lines.length - 1)] ?? 0);
+      term.scrollToLine(Math.max(0, line - 2));
+    },
+    scrollToBottom() {
+      terminal.current?.scrollToBottom();
+    },
+    focus() {
+      terminal.current?.focus();
+    },
+  }));
+
+  return <div ref={container} className={props.mode === 'host' ? 'terminal-host' : 'terminal-host fixed'} />;
+});
+
+function searchOptions() {
+  return {
+    caseSensitive: false,
+    decorations: {
+      matchBackground: '#f0b14f55',
+      activeMatchBackground: '#f0b14f',
+      matchOverviewRuler: '#f0b14f',
+      activeMatchColorOverviewRuler: '#e67e22',
+    },
+  };
+}

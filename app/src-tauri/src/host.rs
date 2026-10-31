@@ -1,0 +1,281 @@
+//! A hosted session as the app sees it: the engine's session and sharing, the state the window
+//! shows, and streaming the terminal to the window (design decision 2).
+//!
+//! The window can close and reopen while the session runs; on every attach it gets the whole
+//! output log replayed, so it shows the full scrollback.
+
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+
+use serde::Serialize;
+use specdeck_core::environment::Environment;
+use specdeck_core::output_log::Record;
+use specdeck_core::peer::PeerConfig;
+use specdeck_core::session::{HostConfig, HostSession, SessionEvent};
+use specdeck_core::sharing::{MAX_VIEWERS, Sharing, SharingConfig, SharingEvent};
+use specdeck_protocol::control::Participant;
+use specdeck_protocol::timeline::TimelineEvent;
+use specdeck_protocol::{AgentId, AgentStatus};
+use tauri::ipc::{Channel, InvokeResponseBody};
+
+use crate::terminal::encode_records;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SharingState {
+    Connecting,
+    Ready,
+    Unavailable,
+}
+
+/// What the host's window hears about.
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum HostEvent {
+    /// Everything at once, on attach.
+    Snapshot {
+        agent: AgentId,
+        folder: PathBuf,
+        timeline_supported: bool,
+        sharing: SharingState,
+        code: Option<String>,
+        participants: Vec<Participant>,
+        status: AgentStatus,
+        viewer_limit: u8,
+        exited: Option<u32>,
+        timeline: Vec<TimelineEvent>,
+    },
+    Sharing {
+        state: SharingState,
+        code: Option<String>,
+    },
+    Participants {
+        participants: Vec<Participant>,
+    },
+    Status {
+        status: AgentStatus,
+    },
+    Timeline {
+        event: TimelineEvent,
+    },
+    Exited {
+        code: u32,
+    },
+}
+
+/// The window's view of the session, kept while no window is attached.
+struct Ui {
+    sharing: SharingState,
+    code: Option<String>,
+    participants: Vec<Participant>,
+    viewer_limit: u8,
+    exited: Option<u32>,
+    events: Option<Channel<HostEvent>>,
+}
+
+impl Ui {
+    fn send(&mut self, event: HostEvent) {
+        if let Some(events) = &self.events
+            && events.send(event).is_err()
+        {
+            self.events = None;
+        }
+    }
+}
+
+pub struct HostRuntime {
+    pub agent: AgentId,
+    pub folder: PathBuf,
+    session: HostSession,
+    sharing: Sharing,
+    ui: Arc<Mutex<Ui>>,
+    /// Bumped on every attach; an older terminal stream stops when it sees a newer one.
+    attach_generation: Arc<AtomicU64>,
+}
+
+pub struct StartOptions {
+    pub agent: AgentId,
+    pub folder: PathBuf,
+    pub cols: u16,
+    pub rows: u16,
+    pub username: String,
+    pub data_dir: PathBuf,
+    pub signalling_url: String,
+    pub peer: PeerConfig,
+}
+
+impl HostRuntime {
+    pub async fn start(options: StartOptions, env: &Environment) -> Result<Self, String> {
+        let config = HostConfig {
+            agent: options.agent,
+            folder: options.folder.clone(),
+            cols: options.cols,
+            rows: options.rows,
+            data_dir: options.data_dir,
+        };
+        let (session, mut session_events) =
+            HostSession::start(config, env).await.map_err(|error| error.to_string())?;
+        let (sharing, mut sharing_events) = Sharing::start(
+            session.view(),
+            SharingConfig {
+                signalling_url: options.signalling_url,
+                username: options.username,
+                peer: options.peer,
+                viewer_limit: MAX_VIEWERS,
+            },
+        );
+        let ui = Arc::new(Mutex::new(Ui {
+            sharing: SharingState::Connecting,
+            code: None,
+            participants: Vec::new(),
+            viewer_limit: MAX_VIEWERS,
+            exited: None,
+            events: None,
+        }));
+
+        let shared = ui.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    event = session_events.recv() => match event {
+                        Some(SessionEvent::Status(status)) => shared.lock().unwrap().send(HostEvent::Status { status }),
+                        Some(SessionEvent::Timeline(event)) => shared.lock().unwrap().send(HostEvent::Timeline { event }),
+                        Some(SessionEvent::Exited { code }) => {
+                            let mut ui = shared.lock().unwrap();
+                            ui.exited = Some(code);
+                            ui.send(HostEvent::Exited { code });
+                        }
+                        Some(SessionEvent::Output | SessionEvent::Resized { .. }) => {}
+                        None => break,
+                    },
+                    event = sharing_events.recv() => match event {
+                        Some(SharingEvent::Ready { code }) => {
+                            let mut ui = shared.lock().unwrap();
+                            ui.sharing = SharingState::Ready;
+                            ui.code = Some(code.to_string());
+                            let code = ui.code.clone();
+                            ui.send(HostEvent::Sharing { state: SharingState::Ready, code });
+                        }
+                        Some(SharingEvent::Unavailable) => {
+                            let mut ui = shared.lock().unwrap();
+                            ui.sharing = SharingState::Unavailable;
+                            let code = ui.code.clone();
+                            ui.send(HostEvent::Sharing { state: SharingState::Unavailable, code });
+                        }
+                        Some(SharingEvent::Participants(participants)) => {
+                            let mut ui = shared.lock().unwrap();
+                            ui.participants = participants.clone();
+                            ui.send(HostEvent::Participants { participants });
+                        }
+                        None => break,
+                    },
+                }
+            }
+        });
+
+        Ok(Self {
+            agent: options.agent,
+            folder: options.folder,
+            session,
+            sharing,
+            ui,
+            attach_generation: Arc::default(),
+        })
+    }
+
+    /// Connects a window: sends the current state, then the terminal from the start of the
+    /// session and everything that follows.
+    pub fn attach(&self, terminal: Channel<InvokeResponseBody>, events: Channel<HostEvent>) {
+        let view = self.session.view();
+        {
+            let mut ui = self.ui.lock().unwrap();
+            let snapshot = HostEvent::Snapshot {
+                agent: self.agent,
+                folder: self.folder.clone(),
+                timeline_supported: self.agent.has_timeline(),
+                sharing: ui.sharing,
+                code: ui.code.clone(),
+                participants: ui.participants.clone(),
+                status: view.status(),
+                viewer_limit: ui.viewer_limit,
+                exited: ui.exited,
+                timeline: view.timeline_from(0),
+            };
+            ui.events = Some(events);
+            ui.send(snapshot);
+        }
+        self.session.set_host_window(true);
+
+        let generation = self.attach_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let current = self.attach_generation.clone();
+        let log = view.log().clone();
+        tokio::spawn(async move {
+            let mut changed = log.subscribe();
+            let mut cursor = 0;
+            loop {
+                if current.load(Ordering::SeqCst) != generation {
+                    return;
+                }
+                let records = log.read(cursor, 256 * 1024).unwrap_or_default();
+                match records.last().map(Record::seq) {
+                    Some(last) => {
+                        cursor = last + 1;
+                        if terminal.send(InvokeResponseBody::Raw(encode_records(&records))).is_err()
+                        {
+                            return;
+                        }
+                    }
+                    None => {
+                        if changed.changed().await.is_err() {
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /// The window closed: stop streaming to it, and let the session answer terminal queries.
+    pub fn detach(&self) {
+        self.attach_generation.fetch_add(1, Ordering::SeqCst);
+        self.ui.lock().unwrap().events = None;
+        self.session.set_host_window(false);
+    }
+
+    pub fn input(&self, data: &str) -> Result<(), String> {
+        self.session.input(data.as_bytes()).map_err(|e| e.to_string())
+    }
+
+    pub fn resize(&self, cols: u16, rows: u16) {
+        self.session.resize(cols, rows);
+    }
+
+    pub fn set_colors(&self, colors: specdeck_core::mirror::Colors) {
+        self.session.set_colors(colors);
+    }
+
+    pub fn new_code(&self) {
+        let mut ui = self.ui.lock().unwrap();
+        ui.sharing = SharingState::Connecting;
+        ui.send(HostEvent::Sharing { state: SharingState::Connecting, code: None });
+        drop(ui);
+        self.sharing.new_code();
+    }
+
+    pub fn remove_viewer(&self, viewer_id: u32) {
+        self.sharing.remove(viewer_id);
+    }
+
+    pub fn set_viewer_limit(&self, limit: u8) {
+        self.ui.lock().unwrap().viewer_limit = limit.clamp(1, MAX_VIEWERS);
+        self.sharing.set_viewer_limit(limit);
+    }
+
+    /// Ends sharing and the agent.
+    pub fn close(self) {
+        self.attach_generation.fetch_add(1, Ordering::SeqCst);
+        self.sharing.close();
+        self.session.close();
+    }
+}
