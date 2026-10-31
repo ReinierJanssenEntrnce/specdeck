@@ -96,6 +96,8 @@ export const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalV
       scrollback: 100_000,
       theme: currentTheme(),
       macOptionIsMeta: true,
+      // Lets VoiceOver, Narrator and Orca read the terminal's lines.
+      screenReaderMode: true,
     });
     const fit = new FitAddon();
     const searchAddon = new SearchAddon();
@@ -105,10 +107,14 @@ export const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalV
     term.open(element);
     terminal.current = term;
 
+    // Keys the terminal leaves to the app: F6 moves between the window's parts (handled by the
+    // workspace), and in a viewer's read-only terminal Tab moves focus on, as anywhere else.
     // On Windows and Linux, Ctrl+C copies when text is selected and interrupts otherwise, as in
     // their terminals; Ctrl+Shift+C and Ctrl+Shift+V always copy and paste. macOS uses Cmd.
-    if (!isMac) {
-      term.attachCustomKeyEventHandler((event) => {
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.key === 'F6') return false;
+      if (event.key === 'Tab' && props.mode === 'viewer') return false;
+      if (!isMac) {
         if (event.type !== 'keydown' || !event.ctrlKey || event.altKey || event.metaKey) return true;
         const key = event.key.toLowerCase();
         if (key === 'c' && (event.shiftKey || term.hasSelection())) {
@@ -124,9 +130,9 @@ export const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalV
           void navigator.clipboard?.readText().then((text) => term.paste(text));
           return false;
         }
-        return true;
-      });
-    }
+      }
+      return true;
+    });
     search.current = searchAddon;
 
     const report = () => {

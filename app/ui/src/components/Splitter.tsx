@@ -33,6 +33,8 @@ export function Splitter({ width, onWidth }: { width: number; onWidth: (width: n
       aria-orientation="vertical"
       aria-label="Resize the side panel"
       aria-valuenow={width}
+      aria-valuemin={260}
+      aria-valuemax={900}
       tabIndex={0}
       onKeyDown={(event) => {
         if (event.key === 'ArrowLeft') onWidth(width + 20);

@@ -70,6 +70,28 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
     terminal.current?.scrollToSeq(outputSeq);
   }, []);
 
+  // F6 and Shift+F6 move between the toolbar, the terminal and the side panel, also out of the
+  // host's terminal, where Tab belongs to the agent.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'F6') return;
+      event.preventDefault();
+      event.stopPropagation();
+      const parts = [
+        () => document.querySelector<HTMLElement>('.toolbar button, .toolbar [tabindex="0"]'),
+        () => (terminal.current?.focus(), null),
+        () => document.querySelector<HTMLElement>('.side [role="tab"][aria-selected="true"]'),
+      ];
+      const active = document.activeElement;
+      const current = terminal.current?.hasFocus() ? 1 : active?.closest('.toolbar') ? 0 : active?.closest('.side') ? 2 : -1;
+      // From elsewhere, start at the toolbar.
+      const next = current < 0 ? 0 : (current + (event.shiftKey ? parts.length - 1 : 1)) % parts.length;
+      parts[next]?.()?.focus();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+
   // Find: Cmd+F on macOS; Ctrl+F elsewhere, except in the host's terminal, where Ctrl+F is a
   // terminal key and Ctrl+Shift+F opens search instead.
   useEffect(() => {
@@ -192,8 +214,8 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
   ];
 
   return (
-    <div className="workspace" style={{ ['--side' as string]: `${sideWidth}px` }}>
-      <div className="terminal-pane" aria-label={props.mode === 'host' ? 'Terminal' : 'Terminal, read-only'}>
+    <main className="workspace" style={{ ['--side' as string]: `${sideWidth}px` }}>
+      <section className="terminal-pane" aria-label={props.mode === 'host' ? 'Terminal' : 'Terminal, read-only'}>
         <TerminalView
           ref={terminal}
           mode={props.mode}
@@ -230,9 +252,9 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
             {newOutput ? 'New output · jump to live' : 'Jump to live'}
           </button>
         )}
-      </div>
+      </section>
       <Splitter width={sideWidth} onWidth={setSideWidth} />
       <SidePanel tabs={tabs} selected={tab} onSelect={setTab} />
-    </div>
+    </main>
   );
 });

@@ -9,6 +9,7 @@ const MAC: [string, string][] = [
   ['Next or previous match', 'Return / ⇧Return'],
   ['Timeline, Files, People', '⌘1 ⌘2 ⌘3'],
   ['Jump to live', '⌘↓'],
+  ['Move between toolbar, terminal and side panel', 'F6 / ⇧F6'],
   ['Settings', '⌘,'],
   ['Close the window (a hosted session keeps running)', '⌘W'],
   ['Quit', '⌘Q'],
@@ -23,6 +24,7 @@ const OTHERS: [string, string][] = [
   ['Copy the selection', 'Ctrl+C or Ctrl+Shift+C'],
   ['Paste into your terminal', 'Ctrl+V or Ctrl+Shift+V'],
   ['Timeline, Files, People', 'Ctrl+1 Ctrl+2 Ctrl+3'],
+  ['Move between toolbar, terminal and side panel', 'F6 / Shift+F6'],
   ['Settings', 'Ctrl+,'],
   ['Keyboard shortcuts', 'F1'],
 ];

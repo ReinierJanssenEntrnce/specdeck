@@ -1,0 +1,106 @@
+// Runs axe over every screen and dialog: labels, roles, names and ARIA use. Colour contrast is
+// left out, because jsdom does not lay out or paint.
+import { act, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import axe from 'axe-core';
+import { describe, expect, it, vi } from 'vitest';
+import { App } from '../App';
+import type { Bridge } from '../api/bridge';
+import { fakeBridge, renderWith } from '../test/helpers';
+import type { MenuCommand } from '../menu/menu';
+import { SettingsScreen } from '../screens/SettingsScreen';
+
+vi.mock('../terminal/TerminalView', async () => ({ TerminalView: (await import('../test/terminal-stub')).TerminalViewStub }));
+
+async function violations(): Promise<string[]> {
+  const results = await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } });
+  return results.violations.flatMap((v) => v.nodes.map((n) => `${v.id}: ${v.help} — ${n.target.join(' ')}`));
+}
+
+let menu: (command: MenuCommand) => void = () => {};
+function app(screenName: string, overrides: Partial<Bridge> = {}) {
+  const bridge = fakeBridge(screenName, {
+    onMenu: (handler) => {
+      menu = handler;
+      return () => {};
+    },
+    ...overrides,
+  });
+  renderWith(bridge, <App />);
+  return bridge;
+}
+
+describe('accessibility', () => {
+  it('welcome screen', async () => {
+    app('start', { getProfile: async () => ({ ...(await fakeBridge().getProfile()), username: null }) });
+    await screen.findByText('Welcome to SpecDeck');
+    expect(await violations()).toEqual([]);
+  });
+
+  it('start screen', async () => {
+    app('start');
+    await screen.findByText('Host a session');
+    expect(await violations()).toEqual([]);
+  });
+
+  it('host screen with every side panel tab', async () => {
+    app('host');
+    await screen.findByText('7K2M-9QXH-4TPA');
+    expect(await violations()).toEqual([]);
+    for (const tab of ['Files', 'People']) {
+      await userEvent.click(screen.getByRole('tab', { name: new RegExp(tab) }));
+      expect(await violations()).toEqual([]);
+    }
+  });
+
+  it('viewer screen, joined', async () => {
+    app('start');
+    await userEvent.type(await screen.findByLabelText('Invite code'), '7K2M9QXH4TPA');
+    await userEvent.click(screen.getByRole('button', { name: /Join/ }));
+    await waitFor(() => expect(screen.getByText(/Nick's session/)).toBeInTheDocument(), { timeout: 2000 });
+    expect(await violations()).toEqual([]);
+  });
+
+  it('dialogs and search', async () => {
+    app('host');
+    await screen.findByText('7K2M-9QXH-4TPA');
+    act(() => menu({ id: 'find' }));
+    expect(await violations()).toEqual([]);
+    act(() => menu({ id: 'shortcuts' }));
+    expect(await violations()).toEqual([]);
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: /End session/ }));
+    expect(await violations()).toEqual([]);
+  });
+
+  it('settings window', async () => {
+    renderWith(fakeBridge(), <SettingsScreen />);
+    await screen.findByLabelText('Your name');
+    expect(await violations()).toEqual([]);
+  });
+
+  it('joins a session with the keyboard only', async () => {
+    const bridge = app('start');
+    await screen.findByText('Host a session');
+    for (let i = 0; i < 30 && document.activeElement !== screen.getByLabelText('Invite code'); i++) await userEvent.tab();
+    expect(screen.getByLabelText('Invite code')).toHaveFocus();
+    await userEvent.keyboard('7K2M9QXH4TPA{Enter}');
+    await waitFor(() => expect(bridge.joinSession).toHaveBeenCalledWith('7K2M-9QXH-4TPA', expect.any(Function), expect.any(Function)));
+  });
+
+  it('F6 moves between the toolbar, the terminal and the side panel', async () => {
+    const { terminal } = await import('../test/terminal-stub');
+    app('host');
+    await screen.findByText('7K2M-9QXH-4TPA');
+    await userEvent.keyboard('{F6}');
+    expect(document.activeElement?.closest('.toolbar')).not.toBeNull();
+    await userEvent.keyboard('{F6}');
+    expect(terminal.handle.focus).toHaveBeenCalled();
+    terminal.handle.hasFocus.mockReturnValue(true);
+    await userEvent.keyboard('{F6}');
+    terminal.handle.hasFocus.mockReturnValue(false);
+    expect(screen.getByRole('tab', { selected: true })).toHaveFocus();
+    await userEvent.keyboard('{Shift>}{F6}{/Shift}');
+    expect(terminal.handle.focus).toHaveBeenCalledTimes(2);
+  });
+});
