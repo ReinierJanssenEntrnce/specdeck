@@ -157,6 +157,57 @@ exit 3"#,
 }
 
 #[tokio::test]
+async fn usage_follows_claude_codes_transcript() {
+    let bin = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let project = home.path().join(".claude/projects/-work");
+    std::fs::create_dir_all(&project).unwrap();
+    let call = |id: &str, output: u32| {
+        format!(
+            r#"{{"type":"assistant","isSidechain":false,"requestedModel":"claude-sonnet-5-5","message":{{"id":"{id}","usage":{{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":1000,"output_tokens":{output}}}}}}}"#
+        )
+    };
+    // The second call reaches the transcript after the hook that named it, as a final answer can.
+    fake_agent(
+        bin.path(),
+        "claude",
+        &format!(
+            r#"url=$(sed -n 's/.*"url": "\(http[^"]*\)".*/\1/p' "$2" | head -n 1)
+t="$HOME/.claude/projects/-work/s1.jsonl"
+echo '{first}' > "$t"
+curl -s -o /dev/null -X POST -H "Authorization: Bearer $SPECDECK_HOOK_TOKEN" -d "{{\"hook_event_name\":\"Stop\",\"prompt_id\":\"p1\",\"transcript_path\":\"$t\"}}" "$url"
+sleep 0.3
+echo '{second}' >> "$t"
+read wait"#,
+            first = call("msg_1", 5),
+            second = call("msg_2", 7),
+        ),
+    );
+    let mut env = env(bin.path());
+    env.set("HOME", home.path());
+
+    let (session, mut events) =
+        HostSession::start(config(AgentId::ClaudeCode, bin.path(), data.path()), &env)
+            .await
+            .unwrap();
+    let last = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if let SessionEvent::Timeline(event) = events.recv().await.expect("session ended")
+                && let Entry::Usage { tokens, context_tokens, context_window } = event.entry
+                && tokens.output == 12
+            {
+                return (tokens.total(), context_tokens, context_window);
+            }
+        }
+    })
+    .await
+    .expect("usage of both calls did not arrive");
+    assert_eq!(last, (2 * 1010 + 12, Some(1010), Some(200_000)));
+    session.close();
+}
+
+#[tokio::test]
 async fn agent_that_is_not_installed_creates_no_session() {
     let bin = tempfile::tempdir().unwrap();
     let data = tempfile::tempdir().unwrap();

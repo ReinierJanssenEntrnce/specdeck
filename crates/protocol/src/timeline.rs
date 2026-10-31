@@ -67,6 +67,55 @@ pub enum Entry {
     },
     /// Events arrive again after `TimelineUnavailable`.
     TimelineAvailable,
+    /// The session's token usage so far; each one replaces the previous. The tokens a prompt used
+    /// are the difference between the last `Usage` before it and the last one during it.
+    Usage {
+        tokens: TokenCounts,
+        /// Tokens in the agent's context window now, when known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context_tokens: Option<u64>,
+        /// The size of the context window, when known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context_window: Option<u64>,
+    },
+    /// Usage cannot be read; the session and the timeline are not affected.
+    UsageUnavailable {
+        reason: String,
+    },
+}
+
+/// Tokens used in a session, summed over every model call, subagents included.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenCounts {
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+}
+
+impl TokenCounts {
+    pub fn total(&self) -> u64 {
+        self.input + self.output + self.cache_read + self.cache_write
+    }
+}
+
+impl std::ops::AddAssign for TokenCounts {
+    fn add_assign(&mut self, other: Self) {
+        self.input += other.input;
+        self.output += other.output;
+        self.cache_read += other.cache_read;
+        self.cache_write += other.cache_write;
+    }
+}
+
+impl std::ops::SubAssign for TokenCounts {
+    fn sub_assign(&mut self, other: Self) {
+        self.input -= other.input;
+        self.output -= other.output;
+        self.cache_read -= other.cache_read;
+        self.cache_write -= other.cache_write;
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,6 +170,25 @@ mod tests {
             })
         );
         assert_eq!(serde_json::from_value::<TimelineEvent>(json).unwrap(), event);
+    }
+
+    #[test]
+    fn usage_serialises_with_camel_case_counts() {
+        let entry = Entry::Usage {
+            tokens: TokenCounts { input: 1, output: 2, cache_read: 3, cache_write: 4 },
+            context_tokens: Some(8),
+            context_window: None,
+        };
+        let json = serde_json::to_value(&entry).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "kind": "usage",
+                "tokens": { "input": 1, "output": 2, "cacheRead": 3, "cacheWrite": 4 },
+                "contextTokens": 8
+            })
+        );
+        assert_eq!(serde_json::from_value::<Entry>(json).unwrap(), entry);
     }
 
     #[test]

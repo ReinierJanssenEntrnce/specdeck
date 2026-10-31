@@ -137,7 +137,8 @@ As in SpecDeck 0.x (its design decision 6, verified in `docs/spikes/claude-hooks
 
 Every hook payload carries `transcript_path`, the JSONL transcript Claude Code writes. The host reads it only when the path is a `.jsonl` file under Claude Code's projects folder (`~/.claude/projects`, or `$CLAUDE_CONFIG_DIR/projects`).
 
-- On `Stop`, `PostToolUse`, `PreCompact` and `SessionStart` the host reads only the lines added since its last read.
+- The host learns the path from any hook and then reads only the lines added since its last read, after each hook and every 250 ms: a compaction sends no hook the engine registers, and a final answer can reach the transcript after its `Stop` hook. A missing transcript counts as a problem only after `Stop`, when it must exist.
+- Once a session's context exceeds 200k, the 1M window stays, also after compaction lowers the context again.
 - Each assistant message is counted once, by its message id: Claude Code repeats the same usage on several lines of one answer. Subagent transcripts next to the main one count towards the session total, not towards context fill.
 - Context fill is the latest main-conversation answer's input tokens plus cache-read and cache-write tokens. It is measured against 200k, or 1M when the model id ends in `[1m]` or usage already exceeds 200k; when the window size is unknown, only the token count is shown.
 - Usage travels as a timeline entry, `Usage`, carrying running totals and stamped like the other entries, so late joiners and reconnecting viewers get it through the existing timeline replay without a new message type. Per-prompt tokens are the difference between the `Usage` entries at the start and end of a prompt.

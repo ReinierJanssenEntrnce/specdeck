@@ -23,6 +23,7 @@ use crate::launcher::{self, LaunchError, LaunchOptions};
 use crate::mirror::{Colors, Mirror, Responder};
 use crate::output_log::{Batcher, OutputLog};
 use crate::timeline::{TimelineBuilder, stamp};
+use crate::usage::{self, UsageReader};
 
 #[derive(Clone, Debug)]
 pub struct HostConfig {
@@ -209,6 +210,7 @@ impl HostSession {
             writer: session.writer.clone(),
             activity: Activity::new(config.agent),
             builder: TimelineBuilder::new(config.folder.to_string_lossy()),
+            usage: config.agent.has_timeline().then(|| UsageReader::new(usage::projects_dir(env))),
             timeline: session.timeline.clone(),
             status: session.status.clone(),
             host_entered: session.host_entered.clone(),
@@ -285,6 +287,8 @@ struct Pump {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     activity: Activity,
     builder: TimelineBuilder,
+    /// Token usage from Claude Code's transcript; only for agents with a timeline.
+    usage: Option<UsageReader>,
     timeline: Arc<RwLock<Vec<TimelineEvent>>>,
     status: Arc<Mutex<AgentStatus>>,
     host_entered: Arc<Mutex<Option<Instant>>>,
@@ -311,6 +315,9 @@ impl Pump {
                     }
                     let changes = self.activity.poll(Instant::now());
                     self.apply(changes);
+                    // The transcript can grow after the hook that named it, for example the
+                    // final answer, or a compaction, which sends no hook.
+                    self.poll_usage();
                     continue;
                 }
             };
@@ -360,6 +367,20 @@ impl Pump {
     }
 
     fn handle_hook(&mut self, payload: HookPayload) {
+        if let Some(usage) = &mut self.usage {
+            usage.on_hook(&payload);
+        }
+        self.handle_timeline(payload);
+        self.poll_usage();
+    }
+
+    fn poll_usage(&mut self) {
+        if let Some(entry) = self.usage.as_mut().and_then(UsageReader::poll) {
+            self.emit_entry(entry);
+        }
+    }
+
+    fn handle_timeline(&mut self, payload: HookPayload) {
         match self.builder.handle(payload) {
             Ok(entries) => {
                 let changes = self.activity.on_entries(&entries);
