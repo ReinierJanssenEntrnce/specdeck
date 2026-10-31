@@ -160,7 +160,7 @@ Every hook payload carries `transcript_path`, the JSONL transcript Claude Code w
 | Window state | `tauri-plugin-window-state` (keeps windows on-screen); pane sizes in the settings store |
 | Single instance, deep links | `tauri-plugin-single-instance` forwarding argv/URLs to the running instance; `tauri-plugin-deep-link` |
 | Settings | `tauri-plugin-store` JSON in the app config directory: username, notifications on/off, recent folders, last used agent |
-| Local testing with two apps | Debug builds read `SPECDECK_PROFILE`; a non-default profile uses its own config and data directories and its own single-instance key, so `just local-dev` can run a host and a viewer side by side against the local signalling stack. Release builds ignore it |
+| Local testing with two apps | Debug builds read `SPECDECK_PROFILE`; a non-default profile uses its own config and data directories and window-state file, and skips the single-instance check (the plugin locks on the app identifier), so `just local-dev` can run a host and a viewer side by side against the local signalling stack. Release builds ignore it |
 | Accessibility | Semantic HTML with ARIA labels; the webviews map these to each platform's accessibility API |
 
 Identifier `com.entrnce.specdeck`, product name SpecDeck, version 1.0.0, so on macOS and Windows the native app installs in place of the Electron one.
