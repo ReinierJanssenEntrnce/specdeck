@@ -61,6 +61,10 @@ pub enum Entry {
         tool_use_id: String,
         path: String,
     },
+    /// The agent waits for the host, for example to allow a tool; `message` says what for.
+    Attention {
+        message: String,
+    },
     /// Structured events cannot be captured; the terminal mirror still works.
     TimelineUnavailable {
         reason: String,

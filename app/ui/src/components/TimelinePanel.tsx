@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { AlertTriangle, Check, CircleSlash, History, Loader, X } from 'lucide-react';
+import { AlertTriangle, Check, CircleSlash, Hand, History, Loader, X } from 'lucide-react';
 import type { TimelineModel, ToolItem, Turn } from '../model/timeline';
 import { toolSummary } from '../model/timeline';
 import { DiffView } from './DiffView';
@@ -128,7 +128,15 @@ function TurnView({ turn, number, match, current, onJump }: { turn: Turn; number
         <span className="text selectable">{turn.prompt || 'Earlier prompt'}</span>
       </button>
       {turn.items.map((item) =>
-        item.kind === 'text' ? <Markdown key={item.id} text={item.text} /> : <ToolView key={item.id} item={item} onJump={onJump} />,
+        item.kind === 'text' ? (
+          <Markdown key={item.id} text={item.text} />
+        ) : item.kind === 'notice' ? (
+          <p key={item.id} className="notice">
+            <Hand aria-hidden /> {item.text}
+          </p>
+        ) : (
+          <ToolView key={item.id} item={item} onJump={onJump} />
+        ),
       )}
       {showResponse && <Markdown text={turn.response ?? ''} />}
     </article>

@@ -47,7 +47,17 @@ enum Payload {
         error: Option<String>,
     },
     SessionEnd,
+    /// Claude Code asks the host something, for example permission to use a tool.
+    Notification {
+        #[serde(default)]
+        message: String,
+        #[serde(default)]
+        notification_type: String,
+    },
 }
+
+/// Notifications that mean Claude Code waits for the host; others (such as being idle) do not.
+const ATTENTION_TYPES: [&str; 2] = ["permission_prompt", "elicitation_dialog"];
 
 #[derive(Deserialize)]
 struct ToolCall {
@@ -173,6 +183,13 @@ impl TimelineBuilder {
                 entries
             }
             Payload::SessionEnd => vec![Entry::SessionEnded],
+            Payload::Notification { message, notification_type } => {
+                if ATTENTION_TYPES.contains(&notification_type.as_str()) {
+                    vec![Entry::Attention { message }]
+                } else {
+                    Vec::new()
+                }
+            }
         })
     }
 
@@ -232,5 +249,29 @@ mod tests {
         assert_eq!(stamp(Entry::SessionStarted, None, 5).output_seq, -1);
         let event = stamp(Entry::SessionEnded, Some(41), 1_700_000_000_000);
         assert_eq!((event.output_seq, event.at), (41, 1_700_000_000_000));
+    }
+
+    fn payload(value: serde_json::Value) -> HookPayload {
+        value.as_object().unwrap().clone()
+    }
+
+    #[test]
+    fn a_permission_request_asks_for_attention_and_idle_reminders_do_not() {
+        let mut builder = TimelineBuilder::new("/work");
+        let asked = builder.handle(payload(serde_json::json!({
+            "hook_event_name": "Notification",
+            "message": "Claude needs your permission to use Bash",
+            "notification_type": "permission_prompt"
+        })));
+        assert_eq!(
+            asked.unwrap(),
+            [Entry::Attention { message: "Claude needs your permission to use Bash".into() }]
+        );
+        let idle = builder.handle(payload(serde_json::json!({
+            "hook_event_name": "Notification",
+            "message": "Claude is waiting for your input",
+            "notification_type": "idle_prompt"
+        })));
+        assert!(idle.unwrap().is_empty());
     }
 }

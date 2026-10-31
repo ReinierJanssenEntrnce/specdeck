@@ -33,12 +33,20 @@ export interface ToolItem {
   outputSeq: number;
 }
 
+/** The agent waited for the host here, for example to allow a tool. */
+export interface NoticeItem {
+  kind: 'notice';
+  id: string;
+  text: string;
+  outputSeq: number;
+}
+
 export interface Turn {
   promptId: string;
   prompt: string;
   at: number;
   outputSeq: number;
-  items: (TextItem | ToolItem)[];
+  items: (TextItem | ToolItem | NoticeItem)[];
   /** The final response, once the turn is over. */
   response: string | null;
   /** Tokens the agent used for this prompt so far, once usage is known. */
@@ -173,6 +181,11 @@ export function buildTimeline(events: TimelineEvent[]): TimelineModel {
         if (turn) turn.tokens = total - (startTotals.get(turn) ?? total);
         break;
       }
+      case 'attention': {
+        const turn = turns.at(-1);
+        turn?.items.push({ kind: 'notice', id: `notice-${event.at}-${turn.items.length}`, text: event.message, outputSeq: event.outputSeq });
+        break;
+      }
       case 'usage-unavailable':
       case 'status-line':
       case 'git':
@@ -223,7 +236,7 @@ export function toolSummary(item: ToolItem): string {
 export function turnText(turn: Turn): string {
   const parts = [turn.prompt, turn.response ?? ''];
   for (const item of turn.items) {
-    parts.push(item.kind === 'text' ? item.text : `${item.toolName} ${toolSummary(item)}`);
+    parts.push(item.kind === 'tool' ? `${item.toolName} ${toolSummary(item)}` : item.text);
   }
   return parts.join('\n');
 }

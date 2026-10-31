@@ -67,6 +67,7 @@ export type TimelineEvent = Stamp &
     | { kind: 'tool-result'; promptId: string; toolUseId: string; status: 'succeeded' | 'failed' | 'not-run'; error?: string }
     | { kind: 'file-change'; promptId: string; toolUseId: string; path: string; change: 'created' | 'edited'; hunks: DiffHunk[] }
     | { kind: 'file-read'; promptId: string; toolUseId: string; path: string }
+    | { kind: 'attention'; message: string }
     | { kind: 'timeline-unavailable'; reason: string }
     | { kind: 'timeline-available' }
     | { kind: 'usage'; tokens: TokenCounts; contextTokens?: number; contextWindow?: number }

@@ -74,10 +74,11 @@ impl Activity {
         }
         for entry in entries {
             let status = match entry {
-                Entry::Prompt { .. } | Entry::Message { .. } | Entry::ToolCall { .. } => {
-                    AgentStatus::Working
-                }
-                Entry::Response { .. } => AgentStatus::Waiting,
+                Entry::Prompt { .. }
+                | Entry::Message { .. }
+                | Entry::ToolCall { .. }
+                | Entry::ToolResult { .. } => AgentStatus::Working,
+                Entry::Response { .. } | Entry::Attention { .. } => AgentStatus::Waiting,
                 Entry::SessionEnded => AgentStatus::Exited,
                 _ => continue,
             };
@@ -157,6 +158,21 @@ mod tests {
         assert_eq!(activity.on_entries(&[prompt()]), [Change::Status(AgentStatus::Working)]);
         assert_eq!(activity.on_entries(&[response()]), [Change::Status(AgentStatus::Waiting)]);
         assert_eq!(activity.on_exit(), [Change::Status(AgentStatus::Exited)]);
+    }
+
+    #[test]
+    fn a_permission_request_waits_until_the_tool_ran() {
+        let mut activity = Activity::new(AgentId::ClaudeCode);
+        activity.on_entries(&[prompt()]);
+        let asked = Entry::Attention { message: "Claude needs your permission to use Bash".into() };
+        assert_eq!(activity.on_entries(&[asked]), [Change::Status(AgentStatus::Waiting)]);
+        let ran = Entry::ToolResult {
+            prompt_id: "p".into(),
+            tool_use_id: "t".into(),
+            status: specdeck_protocol::timeline::ToolStatus::Succeeded,
+            error: None,
+        };
+        assert_eq!(activity.on_entries(&[ran]), [Change::Status(AgentStatus::Working)]);
     }
 
     #[test]

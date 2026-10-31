@@ -80,3 +80,15 @@ describe('usage', () => {
     expect(turns.map((turn) => turn.tokens)).toEqual([350, null, 140]);
   });
 });
+
+describe('attention', () => {
+  it('shows where the agent waited for the host', () => {
+    const { turns } = buildTimeline([
+      { ...stamp(), kind: 'prompt', promptId: 'p1', text: 'run the tests' },
+      { ...stamp(), kind: 'tool-call', promptId: 'p1', toolUseId: 't1', toolName: 'Bash', input: { command: 'npm test' } },
+      { ...stamp(), kind: 'attention', message: 'Claude needs your permission to use Bash' },
+    ]);
+    expect(turns[0]!.items.at(-1)).toMatchObject({ kind: 'notice', text: 'Claude needs your permission to use Bash' });
+    expect(turnText(turns[0]!)).toContain('permission to use Bash');
+  });
+});
