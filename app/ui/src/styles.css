@@ -461,6 +461,10 @@ html.translucent .workspace > .side { background: color-mix(in srgb, var(--surfa
 .reader-tabs [aria-current='page'] { background: var(--accent-soft); color: var(--accent-hover); font-weight: 600; }
 .reader-body { overflow-y: auto; padding: 20px 28px 32px; display: grid; align-content: start; gap: 6px; }
 .reader-body > * { max-width: 700px; width: 100%; margin-inline: auto; }
+/* A document's own heading levels, also inside the dialog that holds the reader. */
+.reader-body .markdown h1 { font-size: 20px; margin: 4px 0 8px; }
+.reader-body .markdown h2 { font-size: 16px; }
+.reader-body .markdown h3 { font-size: 14px; }
 .doc-block { border-radius: 8px; }
 .doc-block.mark-new, .doc-block.mark-changed { padding: 8px 12px; }
 .doc-block.mark-new { background: var(--added); }
