@@ -20,3 +20,12 @@ pub mod viewer;
 
 #[cfg(all(test, unix))]
 mod test_support;
+
+// The OpenSSL that libdatachannel vendors uses these Windows libraries, but its build does not
+// tell the linker; without them a program that links little else fails with unresolved symbols.
+#[cfg(windows)]
+#[link(name = "advapi32")]
+#[link(name = "bcrypt")]
+#[link(name = "crypt32")]
+#[link(name = "user32")]
+unsafe extern "C" {}
