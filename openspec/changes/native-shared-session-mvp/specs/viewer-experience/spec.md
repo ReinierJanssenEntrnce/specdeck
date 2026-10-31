@@ -74,3 +74,29 @@ Participants SHALL see whether the session is live, whether the agent is working
 #### Scenario: Session ends
 - **WHEN** the host closes the session
 - **THEN** viewers see that the session has ended and can keep reading what they received until they leave
+
+### Requirement: Status bar
+A small bar at the bottom of the session window SHALL show all participants the session folder and, when it is a git repository, its branch, whether it has uncommitted changes, how far it is ahead of or behind its upstream, and the linked worktree. Values that are not known SHALL be left out rather than guessed.
+
+#### Scenario: Session in a git repository
+- **WHEN** the host runs a session in a git repository with uncommitted changes
+- **THEN** every participant's status bar shows the folder and the branch marked as changed
+
+#### Scenario: Terminal-only agent
+- **WHEN** the session runs OpenCode or omp
+- **THEN** the status bar shows the folder and git state only
+
+### Requirement: Agent figures in the status bar
+For a Claude Code session the status bar SHALL also show the model with its context window size, reasoning effort and fast mode, the context fill as a gauge with percentage and tokens used of the window, the session's token total, and the host account's 5-hour and 7-day rate-limit use with the time left until each resets. The host's own Claude Code status line SHALL keep working unchanged in the terminal.
+
+#### Scenario: Claude Code answers
+- **WHEN** Claude Code answers a prompt
+- **THEN** every participant's status bar shows the model, the context gauge and the rate limits
+
+#### Scenario: The host has their own status line
+- **WHEN** the host's Claude Code settings define a status line
+- **THEN** the terminal still shows the host's own status line, and the status bar shows SpecDeck's figures
+
+#### Scenario: Rate limits not reported
+- **WHEN** Claude Code has not reported rate limits, for example before its first answer or on an account without them
+- **THEN** the status bar leaves the rate limits out

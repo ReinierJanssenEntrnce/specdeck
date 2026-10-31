@@ -69,7 +69,7 @@ Timeline entries SHALL appear for all participants while the session runs, in th
 - **THEN** the viewer receives every timeline entry from the start of the session
 
 ### Requirement: Session usage
-For a Claude Code session, all participants SHALL see how full the agent's context window is, the total tokens used in the session, and the tokens used per prompt. The figures SHALL update while the session runs and SHALL be complete for viewers who join late. Money cost SHALL NOT be shown.
+For a Claude Code session, all participants SHALL see how full the agent's context window is, the total tokens used in the session, and the tokens used per prompt. The figures SHALL update while the session runs and SHALL be complete for viewers who join late. Money cost SHALL NOT be shown. Where participants see these figures is set by the status bar requirement in `viewer-experience`.
 
 #### Scenario: Claude answers a prompt
 - **WHEN** Claude Code finishes answering a prompt

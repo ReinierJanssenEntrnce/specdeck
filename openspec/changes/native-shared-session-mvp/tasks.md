@@ -20,6 +20,7 @@
 - [x] 2.7 Implement degraded mode (no event within 10 s of Enter, or unparsable payload; recovery on the next valid event) and Claude status (`starting`, `working`, `waiting`, `exited`). Verify with tests for each transition
 - [x] 2.8 Implement the host session lifecycle in `core`: start with the chosen agent, input from host only, host resize, agent exit while session stays open, close (process ended, log deleted), timeline-not-supported and status `unknown` for agents without an event source. Verify with integration tests driving fake `claude` and `opencode` scripts
 - [x] 2.9 Implement the usage reader: check that the transcript path is in Claude Code's own folder, read only new lines, count each message once (subagents in the session total), context fill and window size, and the `Usage` timeline entry. Verify with tests against sanitized transcript fixtures: a normal session, a compacted session, a subagent, a path outside Claude Code's folder, and a corrupt line
+- [ ] 2.10 Implement the status-line relay and git state: the relay script and `statusLine` setting with the host's own command and padding, the `/status` route, the `StatusLine` entry (changes only), and the `Git` entry from `git status` every 5 s for every agent. Verify with tests: the host's command still prints its line, payloads become entries, unchanged payloads emit nothing, no git repository, dirty and ahead/behind, and a fake `claude` session end to end
 
 ## 3. Protocol
 
@@ -57,7 +58,7 @@
 - [ ] 6.7 Implement close-window-keeps-session and reattach by local replay. Verify manually: close the window with a viewer connected, reopen, and see full scrollback while the viewer stays connected
 - [x] 6.8 Add the local two-app test setup: `just local-dev` starts the local signalling + coturn stack (4.3) and two app instances, a host and a viewer, each with its own profile (`SPECDECK_PROFILE`: separate settings and data directory, separate single-instance key) pointed at the local signalling service; `just local-down` stops it. Verify by hosting in one window, joining with the code in the other, and seeing output, timeline and participants live
 - [ ] 6.9 Write `docs/user-guide.md` for hosting and joining, and verify each step against the running app
-- [ ] 6.10 Show usage in the UI: a context meter in the host and viewer toolbars with the session total in its tooltip, tokens per prompt in the Timeline, an unavailable state, and nothing for OpenCode and omp. Verify with component tests and a live session
+- [ ] 6.10 Show usage in the UI: a status bar at the bottom of the host and viewer windows (folder, git state, model and effort, context gauge with percentage and used/size, session total, 5h and 7d rate limits with time to reset), small and quiet in style, tokens per prompt in the Timeline, an unavailable state, and nothing for OpenCode and omp. Verify with component tests and a live session
 
 ## 7. Native integration
 
