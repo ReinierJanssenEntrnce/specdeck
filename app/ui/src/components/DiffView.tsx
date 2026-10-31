@@ -1,15 +1,24 @@
 import type { FileChange } from '../model/timeline';
 
+const LABELS = {
+  created: { verb: 'Created', kind: 'new file' },
+  edited: { verb: 'Changed', kind: 'edited' },
+  deleted: { verb: 'Deleted', kind: 'deleted' },
+} as const;
+
 /** One change to one file, as unified diff hunks with line numbers. */
 export function DiffView({ change, showPath = true }: { change: FileChange; showPath?: boolean }) {
+  const label = LABELS[change.change];
   return (
-    <div className="diff" aria-label={`${change.change === 'created' ? 'Created' : 'Changed'} ${change.path}`}>
+    <div className="diff" aria-label={`${label.verb} ${change.path}`}>
       {showPath && (
         <div className="file">
           <span>{change.path}</span>
-          <span className="kind">{change.change === 'created' ? 'new file' : 'edited'}</span>
+          <span className="kind">{label.kind}</span>
         </div>
       )}
+      {/* Binary files, and changes too large to send, come without hunks. */}
+      {change.hunks.length === 0 && <div className="hunk">No diff to show</div>}
       {change.hunks.map((hunk, i) => {
         let oldLine = hunk.oldStart;
         let newLine = hunk.newStart;

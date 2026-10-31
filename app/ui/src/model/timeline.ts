@@ -7,7 +7,7 @@ export type ToolStatus = 'running' | 'succeeded' | 'failed' | 'not-run';
 
 export interface FileChange {
   path: string;
-  change: 'created' | 'edited';
+  change: 'created' | 'edited' | 'deleted';
   hunks: DiffHunk[];
   promptId: string;
   toolUseId: string;

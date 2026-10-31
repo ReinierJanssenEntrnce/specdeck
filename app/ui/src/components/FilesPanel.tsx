@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Eye, FilePen, FilePlus, Files } from 'lucide-react';
+import { ArrowLeft, Eye, FilePen, FilePlus, FileX, Files } from 'lucide-react';
 import type { TouchedFile } from '../model/timeline';
 import { DiffView } from './DiffView';
 
@@ -57,15 +57,25 @@ export function FilesPanel({ files, timelineSupported, agentName, onJump }: Prop
     <ul className="files" aria-label="Touched files">
       {files.map((f) => {
         const created = f.changes.some((c) => c.change === 'created');
-        const Icon = f.readOnly ? Eye : created ? FilePlus : FilePen;
+        const deleted = f.changes.at(-1)?.change === 'deleted';
+        const Icon = f.readOnly ? Eye : deleted ? FileX : created ? FilePlus : FilePen;
+        const tag = f.readOnly
+          ? 'read'
+          : deleted
+            ? 'deleted'
+            : f.changes.length === 1
+              ? created
+                ? 'new'
+                : '1 change'
+              : `${f.changes.length} changes`;
         return (
           <li key={f.path}>
-            <button onClick={() => !f.readOnly && setOpen(f.path)} disabled={f.readOnly} aria-label={`${f.path}, ${f.readOnly ? 'read' : f.changes.length === 1 ? '1 change' : `${f.changes.length} changes`}`}>
+            <button onClick={() => !f.readOnly && setOpen(f.path)} disabled={f.readOnly} aria-label={`${f.path}, ${tag === 'new' ? '1 change' : tag}`}>
               <Icon aria-hidden />
               <span className="path" title={f.path}>
                 {f.path}
               </span>
-              <span className="tag">{f.readOnly ? 'read' : f.changes.length === 1 ? (created ? 'new' : '1 change') : `${f.changes.length} changes`}</span>
+              <span className="tag">{tag}</span>
             </button>
           </li>
         );

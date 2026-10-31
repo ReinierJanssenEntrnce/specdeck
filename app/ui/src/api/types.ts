@@ -75,7 +75,7 @@ export type TimelineEvent = Stamp &
     | { kind: 'response'; promptId: string; text: string }
     | { kind: 'tool-call'; promptId: string; toolUseId: string; toolName: string; input: Record<string, unknown> }
     | { kind: 'tool-result'; promptId: string; toolUseId: string; status: 'succeeded' | 'failed' | 'not-run'; error?: string }
-    | { kind: 'file-change'; promptId: string; toolUseId: string; path: string; change: 'created' | 'edited'; hunks: DiffHunk[] }
+    | { kind: 'file-change'; promptId: string; toolUseId: string; path: string; change: 'created' | 'edited' | 'deleted'; hunks: DiffHunk[] }
     | { kind: 'file-read'; promptId: string; toolUseId: string; path: string }
     | { kind: 'attention'; message: string }
     | { kind: 'timeline-unavailable'; reason: string }

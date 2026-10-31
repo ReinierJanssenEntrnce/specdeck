@@ -283,3 +283,69 @@ async fn agent_that_is_not_installed_creates_no_session() {
     assert!(result.is_err());
     assert_eq!(std::fs::read_dir(data.path()).unwrap().count(), 0, "left files behind");
 }
+
+#[tokio::test]
+async fn files_a_shell_command_changes_reach_the_timeline() {
+    let bin = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let repo = tempfile::tempdir().unwrap();
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+            .args(args)
+            .current_dir(repo.path())
+            .stdout(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    };
+    git(&["init", "-q", "-b", "main"]);
+    std::fs::write(repo.path().join("README.md"), "# Title\nold line\n").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "first"]);
+    // Edits the file between the hooks around a Bash call, as Claude Code's shell tool does; the
+    // hook answer must come first, so the edit waits for curl.
+    fake_agent(
+        bin.path(),
+        "claude",
+        r#"url=$(sed -n 's/.*"url": "\(http[^"]*\)".*/\1/p' "$2" | head -n 1)
+post() { curl -s -o /dev/null -X POST -H "Authorization: Bearer $SPECDECK_HOOK_TOKEN" -d "$1" "$url"; }
+post '{"hook_event_name":"UserPromptSubmit","prompt_id":"p1","prompt":"edit the readme"}'
+post '{"hook_event_name":"PreToolUse","prompt_id":"p1","tool_name":"Bash","tool_use_id":"t1","tool_input":{"command":"sed"}}'
+sed 's/old line/new line/' README.md > README.tmp && mv README.tmp README.md
+post '{"hook_event_name":"PostToolUse","prompt_id":"p1","tool_name":"Bash","tool_use_id":"t1","tool_input":{"command":"sed"},"tool_response":{}}'
+echo posted
+exit 0"#,
+    );
+
+    let mut path = env(bin.path());
+    path.set("HOME", repo.path());
+    let (session, mut events) =
+        HostSession::start(config(AgentId::ClaudeCode, repo.path(), data.path()), &path)
+            .await
+            .unwrap();
+    next_matching(&mut events, |e| matches!(e, SessionEvent::Exited { .. })).await;
+    let changes: Vec<Entry> = session
+        .timeline()
+        .into_iter()
+        .map(|e| e.entry)
+        .filter(|e| matches!(e, Entry::FileChange { .. }))
+        .collect();
+    assert_eq!(
+        changes,
+        [Entry::FileChange {
+            prompt_id: "p1".into(),
+            tool_use_id: "t1".into(),
+            path: "README.md".into(),
+            change: specdeck_protocol::timeline::FileChangeKind::Edited,
+            hunks: vec![specdeck_protocol::timeline::DiffHunk {
+                old_start: 1,
+                old_lines: 2,
+                new_start: 1,
+                new_lines: 2,
+                lines: vec![" # Title".into(), "-old line".into(), "+new line".into()],
+            }],
+        }]
+    );
+    session.close();
+}

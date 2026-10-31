@@ -22,6 +22,7 @@ use crate::hooks::{self, HookEndpoint, HookPayload};
 use crate::launcher::{self, LaunchError, LaunchOptions};
 use crate::mirror::{Colors, Mirror, Responder};
 use crate::output_log::{Batcher, OutputLog};
+use crate::shell_changes::{CommandChanges, ShellChanges};
 use crate::status::{self, StatusLineReader};
 use crate::timeline::{TimelineBuilder, stamp};
 use crate::usage::{self, UsageReader};
@@ -57,12 +58,18 @@ pub enum SessionEvent {
 enum Command {
     Output(Vec<u8>),
     OutputClosed,
-    Resize { cols: u16, rows: u16 },
+    Resize {
+        cols: u16,
+        rows: u16,
+    },
     HostWindow(bool),
     Colors(Colors),
-    Hook(HookPayload),
+    /// A hook payload, with what a finished shell command changed (decision 10b).
+    Hook(HookPayload, Option<CommandChanges>),
     Git(Entry),
-    Exited { code: u32 },
+    Exited {
+        code: u32,
+    },
     Close,
 }
 
@@ -164,8 +171,10 @@ impl HostSession {
         let hooks = if config.agent.has_timeline() {
             std::fs::create_dir_all(&config.data_dir).map_err(io_error)?;
             let sender = commands.clone();
+            let shell_changes = ShellChanges::new(&config.folder, &config.data_dir, env);
             let endpoint = HookEndpoint::start(move |payload| {
-                let _ = sender.send(Command::Hook(payload));
+                let changes = shell_changes.as_ref().and_then(|shell| shell.observe(&payload));
+                let _ = sender.send(Command::Hook(payload, changes));
             })
             .await
             .map_err(io_error)?;
@@ -367,10 +376,10 @@ impl Pump {
                         if attached { Responder::HostWindow } else { Responder::Mirror };
                 }
                 Some(Command::Colors(colors)) => self.mirror.set_colors(colors),
-                Some(Command::Hook(payload)) => {
+                Some(Command::Hook(payload, changes)) => {
                     // Entries link to the output before them, so append any pending batch first.
                     self.flush();
-                    self.handle_hook(payload);
+                    self.handle_hook(payload, changes);
                 }
                 Some(Command::Git(entry)) => {
                     if self.git.as_ref() != Some(&entry) {
@@ -389,7 +398,7 @@ impl Pump {
         }
     }
 
-    fn handle_hook(&mut self, payload: HookPayload) {
+    fn handle_hook(&mut self, payload: HookPayload, changes: Option<CommandChanges>) {
         if let Some(usage) = &mut self.usage {
             usage.on_hook(&payload);
         }
@@ -401,7 +410,7 @@ impl Pump {
                 self.emit_entry(entry);
             }
         } else {
-            self.handle_timeline(payload);
+            self.handle_timeline(payload, changes);
         }
         self.poll_usage();
     }
@@ -412,9 +421,15 @@ impl Pump {
         }
     }
 
-    fn handle_timeline(&mut self, payload: HookPayload) {
+    fn handle_timeline(&mut self, payload: HookPayload, changes: Option<CommandChanges>) {
         match self.builder.handle(payload) {
-            Ok(entries) => {
+            Ok(mut entries) => {
+                entries.extend(
+                    changes
+                        .map(|changes| self.builder.command_changes(changes))
+                        .into_iter()
+                        .flatten(),
+                );
                 let changes = self.activity.on_entries(&entries);
                 // Show the timeline as available again before the entries that restored it.
                 self.apply(changes);

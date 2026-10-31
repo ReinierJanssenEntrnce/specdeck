@@ -36,7 +36,7 @@ Each tool Claude Code uses SHALL appear as a timeline entry showing the tool, it
 - **THEN** the tool entry shows that it failed or did not run
 
 ### Requirement: File change diffs
-Each file change made by Claude Code's file-editing tools SHALL appear in the timeline with a diff showing exactly what changed in that file.
+Each file change made by Claude Code's file-editing tools SHALL appear in the timeline with a diff showing exactly what changed in that file. When the session folder is in a git repository, files that Claude Code's shell commands create, change or delete SHALL also appear, with their diffs, under the command that changed them. Outside a git repository, changes made by shell commands are not shown. Snapshots for this SHALL NOT change the repository.
 
 #### Scenario: Claude edits a file
 - **WHEN** Claude Code edits an existing file
@@ -45,6 +45,18 @@ Each file change made by Claude Code's file-editing tools SHALL appear in the ti
 #### Scenario: Claude creates a file
 - **WHEN** Claude Code creates a new file
 - **THEN** the timeline shows the file's full content as added lines
+
+#### Scenario: Claude edits a file through a shell command
+- **WHEN** Claude Code changes a file in a git repository with a shell command, for example a script or `sed -i`
+- **THEN** the timeline shows a diff of that change under the command, and the file is listed as changed
+
+#### Scenario: Claude deletes a file through a shell command
+- **WHEN** Claude Code deletes a file in a git repository with a shell command
+- **THEN** the timeline shows the file's former content as removed lines, and the file is listed as deleted
+
+#### Scenario: Snapshots leave the repository alone
+- **WHEN** Claude Code runs shell commands in a git repository
+- **THEN** the repository's index, objects and refs are unchanged by SpecDeck
 
 ### Requirement: Touched files list
 The app SHALL list every file Claude Code read, created or changed during the session, and SHALL let a participant open all diffs of a changed file. Files Claude did not touch SHALL NOT be browsable through the app.

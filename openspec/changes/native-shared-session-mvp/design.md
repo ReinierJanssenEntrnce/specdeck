@@ -126,12 +126,23 @@ Same scheme as SpecDeck 0.x, reimplemented:
 
 ### 10. Timeline from Claude Code HTTP hooks
 
-As in SpecDeck 0.x (its design decision 6, verified in `docs/spikes/claude-hooks.md`): `claude` starts with an extra `--settings` file registering HTTP hooks to a `127.0.0.1` endpoint on a random port (`axum`), authorised with a per-session bearer token passed by environment variable. The endpoint answers `204` immediately and never influences Claude.
+As in SpecDeck 0.x (its design decision 6, verified in `docs/spikes/claude-hooks.md`): `claude` starts with an extra `--settings` file registering HTTP hooks to a `127.0.0.1` endpoint on a random port (`axum`), authorised with a per-session bearer token passed by environment variable. The endpoint answers `204` and never influences Claude; it answers immediately, except around shell commands, where it first takes a folder snapshot (decision 10b).
 
 - One adapter module maps hook payloads to `TimelineEvent`s and is tested against the recorded hook payloads copied from `../claude-share/spikes/claude-hooks/fixtures`.
 - Each event is stamped with the current output sequence, which links entries to terminal positions.
 - Degraded mode: no event within 10 s of the host pressing Enter, or an unparsable payload, marks the timeline unavailable; the next valid event restores it.
 - Status for viewers (`working`, `waiting`) and the host's "Claude is waiting" notification come from the same events (`UserPromptSubmit`, `Stop`, `Notification`).
+
+### 10b. File changes made by shell commands
+
+Claude Code often changes files through its shell tool (`Bash`, or `PowerShell` on Windows) instead of its file tools, for example in auto mode. Those calls carry no diff, so the host compares the session's git working tree before and after each shell command. Found in a real session in which every edit went through `Bash` and the Files tab stayed empty.
+
+- The hook handler takes the snapshots before it answers `PreToolUse` and `PostToolUse`/`PostToolUseFailure` of a shell tool. Claude Code waits for that answer, so the "before" snapshot really precedes the command.
+- A snapshot is `git add -A` and `git write-tree` with a private index (a copy of the repository's, for its file-status cache) and a private object folder in the session's data folder, with the repository's objects as alternates. The repository's index, objects and refs are never written; the private files go with the session.
+- The diff is `git diff --name-status` between the two trees, then the hunks per file; a file appears as created, edited or deleted. Paths inside the session folder are shown relative to it, others absolute, as for the file tools.
+- Commands that overlap (parallel tool calls) are compared against the later of their own "before" snapshot and the previous command's "after" snapshot, so a change is reported once. It may then be attributed to the other command. Changes the host makes by hand while a command runs are attributed to that command.
+- Limits keep large changes (a branch switch, a generated folder) from flooding viewers: diffs for at most 50 files per command and 2,000 diff lines per file. Further files are listed without a diff. Binary files are listed without a diff.
+- Outside a git repository, or without git, nothing is detected. Reads through the shell (`cat`) are never detected.
 
 ### 10a. Usage and status bar from the Claude Code transcript, the status line and git
 
@@ -178,6 +189,7 @@ Reference machines: Apple M1 with 8 GB (macOS 15), an x64 laptop with 8 GB (Wind
 - [GNOME without an AppIndicator extension shows no tray icon] → Starting the app again reopens the session window through single instance; documented in the user guide.
 - [Login-shell environment probing is slow or hangs on unusual shell configs] → Timeout of 3 s, then fall back to the process `PATH` and common install locations, with a clear error if `claude` is still not found.
 - [OpenCode or omp behave differently in a pty, for example in how they query the terminal or redraw] → Include an OpenCode and an omp session in the mirror-exactness check (task 5.5).
+- [Snapshotting a large working tree delays shell commands] → The private index keeps git's file-status cache, so unchanged files are not read again; a snapshot that fails or takes longer than the hook timeout only loses that command's diff.
 - [Claude Code changes its hook payloads] → One adapter with fixture tests; degraded mode keeps the terminal mirror working.
 - [App crash ends the session for everyone] → Accepted for the MVP (decision 2); sidecar daemon possible later.
 - [0.x and 1.x users try to share with each other] → They cannot meet (different signalling); release notes and the in-app "invalid code" message mention that both sides need SpecDeck 1.x.

@@ -11,6 +11,7 @@ pub mod output_log;
 pub mod peer;
 pub mod session;
 pub mod sharing;
+pub mod shell_changes;
 pub mod signalling_client;
 pub mod status;
 pub mod timeline;

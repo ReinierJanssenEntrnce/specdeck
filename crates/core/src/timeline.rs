@@ -9,6 +9,7 @@ use serde_json::{Map, Value};
 use specdeck_protocol::timeline::{DiffHunk, Entry, FileChangeKind, TimelineEvent, ToolStatus};
 
 use crate::hooks::HookPayload;
+use crate::shell_changes::CommandChanges;
 
 #[derive(Debug, thiserror::Error)]
 #[error("Unexpected {event} payload: {reason}")]
@@ -191,6 +192,21 @@ impl TimelineBuilder {
                 }
             }
         })
+    }
+
+    /// Entries for the files a shell command changed, after its result (decision 10b).
+    pub fn command_changes(&self, changes: CommandChanges) -> Vec<Entry> {
+        changes
+            .files
+            .into_iter()
+            .map(|file| Entry::FileChange {
+                prompt_id: changes.prompt_id.clone(),
+                tool_use_id: changes.tool_use_id.clone(),
+                path: self.display_path(&file.path),
+                change: file.change,
+                hunks: file.hunks,
+            })
+            .collect()
     }
 
     fn close_tool(&mut self, tool_use_id: &str) {

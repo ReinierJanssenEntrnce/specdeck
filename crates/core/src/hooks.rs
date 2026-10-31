@@ -166,7 +166,9 @@ async fn receive(
     if !payload.get("hook_event_name").is_some_and(Value::is_string) {
         return StatusCode::BAD_REQUEST;
     }
-    (handler.on_payload)(payload);
+    // Off the async runtime: around shell commands the callback snapshots the folder (decision
+    // 10b), and Claude Code waits for this answer.
+    let _ = tokio::task::spawn_blocking(move || (handler.on_payload)(payload)).await;
     StatusCode::NO_CONTENT
 }
 
@@ -185,7 +187,9 @@ async fn receive_status_line(
         return StatusCode::BAD_REQUEST;
     };
     payload.insert("hook_event_name".into(), STATUS_LINE_EVENT.into());
-    (handler.on_payload)(payload);
+    // Off the async runtime: around shell commands the callback snapshots the folder (decision
+    // 10b), and Claude Code waits for this answer.
+    let _ = tokio::task::spawn_blocking(move || (handler.on_payload)(payload)).await;
     StatusCode::NO_CONTENT
 }
 

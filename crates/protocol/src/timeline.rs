@@ -181,6 +181,8 @@ pub enum ToolStatus {
 pub enum FileChangeKind {
     Created,
     Edited,
+    /// Only from shell commands; the hunks remove the file's former content.
+    Deleted,
 }
 
 /// A unified-diff hunk; `lines` start with ' ', '-' or '+'.
