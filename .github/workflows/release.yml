@@ -73,7 +73,10 @@ jobs:
 
       # Tools pinned in mise.toml: Rust, Node, pnpm, just, cmake.
       - uses: jdx/mise-action@v3
+      # Also saved when a later step fails: otherwise every failing run starts cold.
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - run: just install
 
       - name: Set up signing on macOS

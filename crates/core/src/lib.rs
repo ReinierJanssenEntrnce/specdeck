@@ -18,5 +18,5 @@ pub mod timeline;
 pub mod usage;
 pub mod viewer;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod test_support;

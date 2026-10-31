@@ -3,7 +3,6 @@
 use std::path::{Path, PathBuf};
 
 /// Writes an executable shell script named `name` into `dir`.
-#[cfg(unix)]
 pub fn fake_executable(dir: &Path, name: &str, body: &str) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
     let path = dir.join(name);
