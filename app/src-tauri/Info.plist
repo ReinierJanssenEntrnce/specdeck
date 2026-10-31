@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Shown when macOS asks for Local Network access, which direct connections to teammates on
+       the same network (and a relay on the local network) need. -->
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>SpecDeck connects directly to teammates on your network when it can, so shared sessions stay fast.</string>
+</dict>
+</plist>
