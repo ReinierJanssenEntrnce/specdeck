@@ -1,8 +1,10 @@
 // The real bridge: Tauri commands from app/src-tauri/src/lib.rs.
 
 import { Channel, invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { Bridge } from './bridge';
+import type { MenuCommand } from '../menu/menu';
 import type { HostEvent, Profile, ViewEvent } from './types';
 
 function channel<T>(handler: (message: T) => void): Channel<T> {
@@ -33,4 +35,8 @@ export const tauriBridge: Bridge = {
     invoke('join_session', { code, terminal: channel<ArrayBuffer>(terminal), events: channel<ViewEvent>(events) }),
   leaveSession: () => invoke('leave_session'),
   copyText: (text) => navigator.clipboard.writeText(text),
+  onMenu: (handler) => {
+    const stop = listen<MenuCommand>('menu', (event) => handler(event.payload));
+    return () => void stop.then((unlisten) => unlisten());
+  },
 };

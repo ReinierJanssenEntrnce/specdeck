@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Folder, FolderOpen, LogIn, X } from 'lucide-react';
 import { errorMessage, useBridge } from '../api/bridge';
 import type { AgentId, AgentInfo, Profile } from '../api/types';
 import { initials } from '../components/PeoplePanel';
 import { formatCode, isCompleteCode } from '../model/code';
+import type { MenuCommand } from '../menu/menu';
 
 interface Props {
   profile: Profile;
@@ -14,10 +15,17 @@ interface Props {
   initialCode?: string;
   /** A message from a join that did not work. */
   joinError?: string;
+  /** A host, join or recent-folder command from the menu, until `onCommandDone`. */
+  command?: MenuCommand | null;
+  onCommandDone?: () => void;
 }
 
 /** Choose to host or to join, and set your name the first time. */
-export function StartScreen({ profile, onProfile, onHosting, onJoin, initialCode = '', joinError }: Props) {
+export function StartScreen({ profile, onProfile, onHosting, onJoin, initialCode = '', joinError, command = null, onCommandDone = () => {} }: Props) {
+  // Without a name there is nothing to host or join yet.
+  useEffect(() => {
+    if (command && !profile.username) onCommandDone();
+  }, [command, profile.username, onCommandDone]);
   if (!profile.username) return <Welcome onProfile={onProfile} />;
   return (
     <main className="start">
@@ -30,8 +38,8 @@ export function StartScreen({ profile, onProfile, onHosting, onJoin, initialCode
           <NameBadge profile={profile} onProfile={onProfile} />
         </header>
         <div className="cards">
-          <HostCard profile={profile} onProfile={onProfile} onHosting={onHosting} />
-          <JoinCard onJoin={onJoin} initialCode={initialCode} error={joinError} />
+          <HostCard profile={profile} onProfile={onProfile} onHosting={onHosting} command={command} onCommandDone={onCommandDone} />
+          <JoinCard onJoin={onJoin} initialCode={initialCode} error={joinError} command={command} onCommandDone={onCommandDone} />
         </div>
       </div>
     </main>
@@ -128,7 +136,18 @@ function defaultAgent(profile: Profile): AgentId | null {
   return installed[0]?.id ?? null;
 }
 
-function HostCard({ profile, onProfile, onHosting }: { profile: Profile; onProfile: (p: Profile) => void; onHosting: () => void }) {
+interface CommandProps {
+  command: MenuCommand | null;
+  onCommandDone: () => void;
+}
+
+function HostCard({
+  profile,
+  onProfile,
+  onHosting,
+  command,
+  onCommandDone,
+}: { profile: Profile; onProfile: (p: Profile) => void; onHosting: () => void } & CommandProps) {
   const bridge = useBridge();
   const [agent, setAgent] = useState<AgentId | null>(() => defaultAgent(profile));
   const [starting, setStarting] = useState<string | null>(null);
@@ -150,6 +169,21 @@ function HostCard({ profile, onProfile, onHosting }: { profile: Profile; onProfi
       setStarting(null);
     }
   };
+
+  // File > Host a Session… and File > Open Recent.
+  useEffect(() => {
+    if (command?.id === 'host') {
+      onCommandDone();
+      void bridge.chooseFolder().then(start);
+    } else if (command?.id === 'recent' && command.path) {
+      const path = command.path;
+      onCommandDone();
+      // Started after this effect, like a click would be.
+      void Promise.resolve().then(() => start(path));
+    }
+    // `start` changes every render; the command is what matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [command]);
 
   return (
     <section className="card" aria-labelledby="host-title">
@@ -232,8 +266,22 @@ function AgentChoice({ info, selected, onSelect }: { info: AgentInfo; selected: 
   );
 }
 
-function JoinCard({ onJoin, initialCode, error }: { onJoin: (code: string) => void; initialCode: string; error?: string }) {
+function JoinCard({
+  onJoin,
+  initialCode,
+  error,
+  command,
+  onCommandDone,
+}: { onJoin: (code: string) => void; initialCode: string; error?: string } & CommandProps) {
   const [code, setCode] = useState(formatCode(initialCode));
+  const input = useRef<HTMLInputElement>(null);
+  // File > Join a Session…
+  useEffect(() => {
+    if (command?.id !== 'join') return;
+    onCommandDone();
+    input.current?.focus();
+    input.current?.select();
+  }, [command, onCommandDone]);
   const complete = isCompleteCode(code);
   return (
     <section className="card" aria-labelledby="join-title">
@@ -252,6 +300,7 @@ function JoinCard({ onJoin, initialCode, error }: { onJoin: (code: string) => vo
           Invite code
         </label>
         <input
+          ref={input}
           id="invite-code"
           className="field code"
           placeholder="XXXX-XXXX-XXXX"

@@ -5,6 +5,7 @@ import type { AgentId, AgentStatus, HostEvent, Participant, SharingState, Timeli
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { StatusPill } from '../components/StatusPill';
 import { StatusBar } from '../components/StatusBar';
+import { useMenu } from '../menu/menu';
 import { statusBarInfo } from '../model/statusbar';
 import { Toast, useToast } from '../components/Toast';
 import { formatCode, joinLink } from '../model/code';
@@ -93,6 +94,15 @@ export function HostScreen({ onEnded }: { onEnded: () => void }) {
       showToast('Could not copy. Select the code and copy it yourself.');
     }
   };
+
+  useMenu((command) => {
+    if (command.id === 'copy-code') {
+      if (state.code) void copy(formatCode(state.code), 'Invite code copied');
+      else showToast('The invite code is not ready yet.');
+    } else if (['host', 'join', 'recent'].includes(command.id)) {
+      showToast('End this session before you host or join another.');
+    }
+  });
 
   const end = async () => {
     setConfirmEnd(false);

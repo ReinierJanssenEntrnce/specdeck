@@ -5,6 +5,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import type { TerminalStep } from './stream';
+import { isMac } from '../menu/menu';
 
 export interface SearchResult {
   index: number;
@@ -23,6 +24,13 @@ export interface TerminalHandle {
   scrollToSeq(seq: number): void;
   scrollToBottom(): void;
   focus(): void;
+  /** Whether the terminal has keyboard focus. */
+  hasFocus(): boolean;
+  /** The selected text, or an empty string. */
+  selection(): string;
+  selectAll(): void;
+  /** Types `text` as a paste, in the host's terminal. */
+  paste(text: string): void;
 }
 
 interface Props {
@@ -96,6 +104,29 @@ export const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalV
     term.loadAddon(new WebLinksAddon());
     term.open(element);
     terminal.current = term;
+
+    // On Windows and Linux, Ctrl+C copies when text is selected and interrupts otherwise, as in
+    // their terminals; Ctrl+Shift+C and Ctrl+Shift+V always copy and paste. macOS uses Cmd.
+    if (!isMac) {
+      term.attachCustomKeyEventHandler((event) => {
+        if (event.type !== 'keydown' || !event.ctrlKey || event.altKey || event.metaKey) return true;
+        const key = event.key.toLowerCase();
+        if (key === 'c' && (event.shiftKey || term.hasSelection())) {
+          event.preventDefault();
+          if (term.hasSelection()) {
+            void navigator.clipboard?.writeText(term.getSelection());
+            term.clearSelection();
+          }
+          return false;
+        }
+        if (key === 'v' && event.shiftKey && props.mode === 'host') {
+          event.preventDefault();
+          void navigator.clipboard?.readText().then((text) => term.paste(text));
+          return false;
+        }
+        return true;
+      });
+    }
     search.current = searchAddon;
 
     const report = () => {
@@ -204,6 +235,18 @@ export const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalV
     },
     focus() {
       terminal.current?.focus();
+    },
+    hasFocus() {
+      return container.current?.contains(document.activeElement) ?? false;
+    },
+    selection() {
+      return terminal.current?.getSelection() ?? '';
+    },
+    selectAll() {
+      terminal.current?.selectAll();
+    },
+    paste(text) {
+      if (props.mode === 'host') terminal.current?.paste(text);
     },
   }));
 

@@ -1,6 +1,7 @@
 // Everything the UI asks of the Rust side. Components get it from BridgeContext, so tests can
 // pass a fake.
 
+import type { MenuCommand } from '../menu/menu';
 import { createContext, useContext } from 'react';
 import type { AgentId, HostEvent, Profile, ViewEvent } from './types';
 
@@ -25,6 +26,8 @@ export interface Bridge {
   joinSession(code: string, terminal: TerminalSink, events: (event: ViewEvent) => void): Promise<void>;
   leaveSession(): Promise<void>;
   copyText(text: string): Promise<void>;
+  /** Calls `handler` for each native menu command; returns a function that stops listening. */
+  onMenu(handler: (command: MenuCommand) => void): () => void;
 }
 
 export const BridgeContext = createContext<Bridge | null>(null);

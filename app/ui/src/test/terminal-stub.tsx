@@ -15,6 +15,10 @@ export const terminal = {
     scrollToSeq: vi.fn(),
     scrollToBottom: vi.fn(),
     focus: vi.fn(),
+    hasFocus: vi.fn(() => false),
+    selection: vi.fn(() => ''),
+    selectAll: vi.fn(),
+    paste: vi.fn(),
   } satisfies TerminalHandle,
   props: {} as Record<string, ((...args: never[]) => void) | string | undefined>,
 };

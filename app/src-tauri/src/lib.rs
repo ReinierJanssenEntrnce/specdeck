@@ -1,4 +1,5 @@
 mod host;
+mod menu;
 mod settings;
 mod terminal;
 mod viewer;
@@ -14,7 +15,11 @@ use specdeck_core::peer::PeerConfig;
 use specdeck_protocol::AgentId;
 use specdeck_protocol::invite::InviteCode;
 use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{AppHandle, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::menu::MenuEvent;
+use tauri::{
+    AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use crate::host::{HostEvent, HostRuntime, StartOptions};
 use crate::settings::Settings;
@@ -122,6 +127,7 @@ async fn set_username(state: State<'_, AppState>, username: String) -> Result<Pr
 
 #[tauri::command]
 async fn remove_recent_folder(
+    app: AppHandle,
     state: State<'_, AppState>,
     path: PathBuf,
 ) -> Result<Profile, String> {
@@ -130,11 +136,13 @@ async fn remove_recent_folder(
         settings.remove_recent(&path);
         state.save(&settings);
     }
+    refresh_menu(&app);
     Ok(profile(&state))
 }
 
 #[tauri::command]
 async fn start_hosting(
+    app: AppHandle,
     state: State<'_, AppState>,
     agent: AgentId,
     folder: PathBuf,
@@ -161,6 +169,8 @@ async fn start_hosting(
     settings.add_recent(folder);
     settings.last_agent = Some(agent);
     state.save(&settings);
+    drop(settings);
+    refresh_menu(&app);
     Ok(())
 }
 
@@ -217,10 +227,11 @@ async fn host_set_viewer_limit(state: State<'_, AppState>, limit: u8) -> Result<
 }
 
 #[tauri::command]
-async fn host_close(state: State<'_, AppState>) -> Result<(), String> {
+async fn host_close(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     if let Some(host) = state.host.lock().unwrap().take() {
         host.close();
     }
+    refresh_menu(&app);
     Ok(())
 }
 
@@ -291,6 +302,73 @@ fn open_main_window(app: &AppHandle) {
         .build();
 }
 
+/// Rebuilds the menu from the recent folders and whether a session is hosted.
+fn refresh_menu(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let recent = state.settings.lock().unwrap().existing_recent();
+    let hosting = state.host.lock().unwrap().is_some();
+    if let Ok(menu) = menu::build(app, &menu::MenuState { recent: &recent, hosting }) {
+        let _ = app.set_menu(menu);
+    }
+}
+
+/// A menu command for the UI.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MenuCommand {
+    id: String,
+    /// The folder, for a recent folder.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<PathBuf>,
+}
+
+fn on_menu_event(app: &AppHandle, event: MenuEvent) {
+    let id = event.id().as_ref();
+    if id == menu::ids::QUIT {
+        return quit(app);
+    }
+    let command = match id.strip_prefix(menu::RECENT_PREFIX) {
+        Some(index) => {
+            let recent = app.state::<AppState>().settings.lock().unwrap().existing_recent();
+            let Some(path) = index.parse::<usize>().ok().and_then(|i| recent.get(i).cloned())
+            else {
+                return;
+            };
+            MenuCommand { id: "recent".into(), path: Some(path) }
+        }
+        None => MenuCommand { id: id.into(), path: None },
+    };
+    // The menu works with the window closed too (macOS, while hosting).
+    open_main_window(app);
+    let _ = app.emit("menu", command);
+}
+
+/// Quits, after confirming when that would end a hosted session for everyone.
+fn quit(app: &AppHandle) {
+    if app.state::<AppState>().host.lock().unwrap().is_none() {
+        return app.exit(0);
+    }
+    let handle = app.clone();
+    app.dialog()
+        .message(
+            "Quitting ends your session. Everyone watching is disconnected and the agent stops.",
+        )
+        .title("End the session and quit?")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "End Session and Quit".into(),
+            "Cancel".into(),
+        ))
+        .show(move |confirmed| {
+            if confirmed {
+                if let Some(host) = handle.state::<AppState>().host.lock().unwrap().take() {
+                    host.close();
+                }
+                handle.exit(0);
+            }
+        });
+}
+
 fn window_title() -> String {
     match std::env::var("SPECDECK_PROFILE").ok().filter(|p| cfg!(debug_assertions) && !p.is_empty())
     {
@@ -328,8 +406,10 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title(&window_title());
             }
+            refresh_menu(app.handle());
             Ok(())
         })
+        .on_menu_event(on_menu_event)
         .on_window_event(|window, event| {
             if let WindowEvent::Destroyed = event {
                 let state = window.state::<AppState>();

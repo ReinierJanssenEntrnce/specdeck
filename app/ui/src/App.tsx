@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { errorMessage, useBridge } from './api/bridge';
 import type { Profile } from './api/types';
+import { ConfirmDialog } from './components/ConfirmDialog';
+import { ShortcutsDialog } from './components/ShortcutsDialog';
+import { dispatchMenu, useMenu, type MenuCommand } from './menu/menu';
 import { HostScreen } from './screens/HostScreen';
 import { StartScreen } from './screens/StartScreen';
 import { ViewerScreen } from './screens/ViewerScreen';
@@ -15,6 +18,19 @@ export function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [screen, setScreen] = useState<Screen>({ kind: 'start' });
   const [error, setError] = useState<string | null>(null);
+  // A host or join command for the start screen, and one waiting for the viewer to confirm leaving.
+  const [startCommand, setStartCommand] = useState<MenuCommand | null>(null);
+  const [leaveFor, setLeaveFor] = useState<MenuCommand | null>(null);
+  const [shortcuts, setShortcuts] = useState(false);
+
+  useEffect(() => bridge.onMenu(dispatchMenu), [bridge]);
+  useMenu((command) => {
+    if (command.id === 'shortcuts') return setShortcuts(true);
+    if (!START_COMMANDS.has(command.id)) return;
+    if (screen.kind === 'start') setStartCommand(command);
+    else if (screen.kind === 'viewer') setLeaveFor(command);
+    // A hosted session answers these itself: one session at a time.
+  });
 
   const refresh = () =>
     bridge.getProfile().then((p) => {
@@ -53,26 +69,49 @@ export function App() {
     );
   }
 
-  switch (screen.kind) {
-    case 'host':
-      return <HostScreen onEnded={() => refresh().then(() => setScreen({ kind: 'start' }))} />;
-    case 'viewer':
-      return (
+  return (
+    <>
+      {screen.kind === 'host' && <HostScreen onEnded={() => refresh().then(() => setScreen({ kind: 'start' }))} />}
+      {screen.kind === 'viewer' && (
         <ViewerScreen
           code={screen.code}
           onLeave={(retry) => setScreen(retry ? { kind: 'start', code: retry.code, joinError: retry.message } : { kind: 'start' })}
         />
-      );
-    case 'start':
-      return (
+      )}
+      {screen.kind === 'start' && (
         <StartScreen
           profile={profile}
           onProfile={setProfile}
-          onHosting={() => setScreen({ kind: 'host' })}
+          onHosting={() => {
+            setScreen({ kind: 'host' });
+            void refresh();
+          }}
           onJoin={(code) => setScreen({ kind: 'viewer', code })}
           initialCode={screen.code}
           joinError={screen.joinError}
+          command={startCommand}
+          onCommandDone={() => setStartCommand(null)}
         />
-      );
-  }
+      )}
+      {leaveFor && (
+        <ConfirmDialog
+          title="Leave this session?"
+          confirm="Leave"
+          onCancel={() => setLeaveFor(null)}
+          onConfirm={() => {
+            void bridge.leaveSession();
+            setScreen({ kind: 'start' });
+            setStartCommand(leaveFor);
+            setLeaveFor(null);
+          }}
+        >
+          <p>You stop watching. You can join again with the invite code while the session runs.</p>
+        </ConfirmDialog>
+      )}
+      {shortcuts && <ShortcutsDialog onClose={() => setShortcuts(false)} />}
+    </>
+  );
 }
+
+/** Menu commands that start something from the start screen. */
+const START_COMMANDS = new Set(['host', 'join', 'recent']);

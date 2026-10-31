@@ -10,6 +10,7 @@ import { TimelinePanel } from '../components/TimelinePanel';
 import { buildTimeline, turnText } from '../model/timeline';
 import { decodeTerminalStream } from '../terminal/stream';
 import { TerminalView, type TerminalHandle } from '../terminal/TerminalView';
+import { useMenu } from '../menu/menu';
 
 export interface WorkspaceHandle {
   /** Terminal data from the session, as received over the bridge. */
@@ -85,6 +86,41 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [props.mode]);
+
+  useMenu((command) => {
+    const term = terminal.current;
+    switch (command.id) {
+      case 'find':
+        setSearching(true);
+        break;
+      case 'tab:timeline':
+      case 'tab:files':
+      case 'tab:people':
+        setTab(command.id.slice(4));
+        break;
+      case 'jump-to-live':
+        term?.scrollToBottom();
+        setNewOutput(false);
+        break;
+      // Edit commands from the Windows and Linux menu, which leaves those keys to the terminal.
+      case 'copy': {
+        const selected = term?.selection();
+        if (selected) void navigator.clipboard?.writeText(selected);
+        else document.execCommand('copy');
+        break;
+      }
+      case 'paste':
+        void navigator.clipboard?.readText().then((text) => {
+          if (term?.hasFocus()) term.paste(text);
+          else document.execCommand('insertText', false, text);
+        });
+        break;
+      case 'select-all':
+        if (term?.hasFocus()) term.selectAll();
+        else document.execCommand('selectAll');
+        break;
+    }
+  });
 
   const step = (forward: boolean) => {
     if (!term) return;
