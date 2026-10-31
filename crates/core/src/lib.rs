@@ -2,6 +2,7 @@
 
 pub mod activity;
 pub mod agent;
+pub mod documents;
 pub mod environment;
 pub mod hooks;
 pub mod ice;
@@ -9,6 +10,7 @@ pub mod launcher;
 pub mod mirror;
 pub mod output_log;
 pub mod peer;
+pub mod plans;
 pub mod session;
 pub mod sharing;
 pub mod shell_changes;

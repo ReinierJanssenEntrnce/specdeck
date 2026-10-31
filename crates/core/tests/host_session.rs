@@ -411,3 +411,89 @@ read line; echo "got:$line"; read line; exit 4"#,
     assert!(session.log().path().exists());
     session.close();
 }
+
+#[tokio::test]
+async fn openspec_documents_and_plans_reach_the_timeline() {
+    let bin = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    // Writes a change as /opsx:propose would, ticks a task, then edits the proposal without
+    // touching the plan; each step reported through hooks after the file is written.
+    fake_agent(
+        bin.path(),
+        "claude",
+        r#"url=$(sed -n 's/.*"url": "\(http[^"]*\)".*/\1/p' "$2" | head -n 1)
+post() { curl -s -o /dev/null -X POST -H "Authorization: Bearer $SPECDECK_HOOK_TOKEN" -d "$1" "$url"; }
+c="$PWD/openspec/changes/demo"
+mkdir -p "$c"
+post '{"hook_event_name":"UserPromptSubmit","prompt_id":"p1","prompt":"/opsx:propose demo"}'
+write() { post "{\"hook_event_name\":\"PreToolUse\",\"prompt_id\":\"p1\",\"tool_name\":\"$1\",\"tool_use_id\":\"$2\",\"tool_input\":{\"file_path\":\"$3\"}}"
+  printf '%b' "$4" > "$3"
+  post "{\"hook_event_name\":\"PostToolUse\",\"prompt_id\":\"p1\",\"tool_name\":\"$1\",\"tool_use_id\":\"$2\",\"tool_input\":{\"file_path\":\"$3\"},\"tool_response\":{\"filePath\":\"$3\",\"originalFile\":null,\"content\":\"x\"}}"; }
+write Write t1 "$c/proposal.md" '# Proposal\n\nWhy we do this.\n'
+write Write t2 "$c/tasks.md" '- [ ] 1.1 one\n- [ ] 1.2 two\n'
+sleep 1
+write Edit t3 "$c/tasks.md" '- [x] 1.1 one\n- [ ] 1.2 two\n'
+sleep 1
+write Edit t4 "$c/proposal.md" '# Proposal\n\nWhy we really do this.\n'
+sleep 1
+echo posted
+exit 0"#,
+    );
+
+    let (session, mut events) = HostSession::start(
+        config(AgentId::ClaudeCode, folder.path(), data.path()),
+        &env(bin.path()),
+    )
+    .await
+    .unwrap();
+    next_matching(&mut events, |e| matches!(e, SessionEvent::Exited { .. })).await;
+    // The last plan read may still be on its way.
+    tokio::time::sleep(Duration::from_millis(800)).await;
+
+    let entries: Vec<Entry> = session.timeline().into_iter().map(|e| e.entry).collect();
+    let documents: Vec<(String, Option<String>)> = entries
+        .iter()
+        .filter_map(|e| match e {
+            Entry::Document { path, text, .. } => Some((path.clone(), text.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        documents,
+        [
+            (
+                "openspec/changes/demo/proposal.md".into(),
+                Some("# Proposal\n\nWhy we do this.\n".into())
+            ),
+            (
+                "openspec/changes/demo/tasks.md".into(),
+                Some("- [ ] 1.1 one\n- [ ] 1.2 two\n".into())
+            ),
+            (
+                "openspec/changes/demo/tasks.md".into(),
+                Some("- [x] 1.1 one\n- [ ] 1.2 two\n".into())
+            ),
+            (
+                "openspec/changes/demo/proposal.md".into(),
+                Some("# Proposal\n\nWhy we really do this.\n".into())
+            ),
+        ]
+    );
+    // Each document follows its own change.
+    let first = entries.iter().position(|e| matches!(e, Entry::Document { .. })).unwrap();
+    assert!(
+        matches!(&entries[first - 1], Entry::FileChange { path, .. } if path.ends_with("proposal.md"))
+    );
+
+    let plans: Vec<(String, u32, u32)> = entries
+        .iter()
+        .filter_map(|e| match e {
+            Entry::Plan { change, tasks, .. } => Some((change.clone(), tasks.done, tasks.total)),
+            _ => None,
+        })
+        .collect();
+    // The proposal edit at the end changed nothing in the plan, so no third plan.
+    assert_eq!(plans, [("demo".into(), 0, 2), ("demo".into(), 1, 2)]);
+    session.close();
+}

@@ -61,6 +61,21 @@ pub enum Entry {
         tool_use_id: String,
         path: String,
     },
+    /// The whole text of a Markdown file the agent just created or changed, sent right after its
+    /// `FileChange`; `None` when it is too large to send.
+    Document {
+        prompt_id: String,
+        tool_use_id: String,
+        path: String,
+        text: Option<String>,
+    },
+    /// An OpenSpec change the agent works on; each one replaces the previous for that change.
+    Plan {
+        change: String,
+        /// In the order of the change's schema.
+        documents: Vec<PlanDocument>,
+        tasks: TaskProgress,
+    },
     /// The agent waits for the host, for example to allow a tool; `message` says what for.
     Attention {
         message: String,
@@ -120,6 +135,24 @@ pub enum Entry {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         worktree: Option<String>,
     },
+}
+
+/// One document of an OpenSpec change, as its schema names it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanDocument {
+    /// The schema's id for it, such as `proposal` or `feature-brief`.
+    pub id: String,
+    pub name: String,
+    /// Its files, relative to the session folder; several for a document such as specs.
+    pub paths: Vec<String>,
+    pub exists: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskProgress {
+    pub done: u32,
+    pub total: u32,
 }
 
 /// Use of one of the host account's rate-limit windows.
@@ -237,6 +270,59 @@ mod tests {
                 "kind": "usage",
                 "tokens": { "input": 1, "output": 2, "cacheRead": 3, "cacheWrite": 4 },
                 "contextTokens": 8
+            })
+        );
+        assert_eq!(serde_json::from_value::<Entry>(json).unwrap(), entry);
+    }
+
+    #[test]
+    fn documents_carry_their_text_or_null_when_too_large() {
+        let document = |text: Option<&str>| Entry::Document {
+            prompt_id: "p".into(),
+            tool_use_id: "t".into(),
+            path: "openspec/changes/x/proposal.md".into(),
+            text: text.map(Into::into),
+        };
+        assert_eq!(
+            serde_json::to_value(document(Some("# Proposal"))).unwrap(),
+            serde_json::json!({
+                "kind": "document", "promptId": "p", "toolUseId": "t",
+                "path": "openspec/changes/x/proposal.md", "text": "# Proposal"
+            })
+        );
+        assert_eq!(serde_json::to_value(document(None)).unwrap()["text"], Value::Null);
+    }
+
+    #[test]
+    fn plan_lists_documents_in_schema_order_with_task_progress() {
+        let entry = Entry::Plan {
+            change: "x".into(),
+            documents: vec![
+                PlanDocument {
+                    id: "feature-brief".into(),
+                    name: "Feature brief".into(),
+                    paths: vec!["openspec/changes/x/brief.md".into()],
+                    exists: true,
+                },
+                PlanDocument {
+                    id: "specs".into(),
+                    name: "Specs".into(),
+                    paths: vec![],
+                    exists: false,
+                },
+            ],
+            tasks: TaskProgress { done: 2, total: 8 },
+        };
+        let json = serde_json::to_value(&entry).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "kind": "plan", "change": "x",
+                "documents": [
+                    { "id": "feature-brief", "name": "Feature brief", "paths": ["openspec/changes/x/brief.md"], "exists": true },
+                    { "id": "specs", "name": "Specs", "paths": [], "exists": false }
+                ],
+                "tasks": { "done": 2, "total": 8 }
             })
         );
         assert_eq!(serde_json::from_value::<Entry>(json).unwrap(), entry);

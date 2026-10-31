@@ -2,10 +2,10 @@
 
 ## 1. Host: document text and plan state
 
-- [ ] 1.1 Add the `Document` and `Plan` timeline entries to `crates/protocol` (design decision 1); verify their wire format with protocol tests, including `text: null` for a document over 200 KB
-- [ ] 1.2 Emit `Document` after each `FileChange` of a Markdown file, with the text from the `Write` response, from disk after `Edit`/`MultiEdit`, and from the "after" snapshot for shell changes (decision 2); verify with timeline tests for each source, the 200 KB cap, deletion (no `Document`), and that a source file gets no `Document`
-- [ ] 1.3 Emit `Plan` for changes under `openspec/changes/<name>/` (decision 3): the OpenSpec CLI with a 5 s limit, debounced, off the hook path; the default-layout fallback; only when it changed. Verify with tests: a fake `openspec` returning a custom schema with a feature brief first, no `openspec` on `PATH` (fallback with ticked and open tasks), a failing CLI (fallback), archive paths ignored, and one CLI call for a burst of writes
-- [ ] 1.4 Verify end to end in `crates/core/tests/host_session.rs`: a fake `claude` writes a proposal and edits a tasks file through hooks; the timeline has the documents' full text and two `Plan` entries with the task count going up
+- [x] 1.1 Add the `Document` and `Plan` timeline entries to `crates/protocol` (design decision 1); verify their wire format with protocol tests, including `text: null` for a document over 200 KB
+- [x] 1.2 Emit `Document` after each `FileChange` of a Markdown file, with the text from the `Write` response, from disk after `Edit`/`MultiEdit`, and from the "after" snapshot for shell changes (decision 2); verify with timeline tests for each source, the 200 KB cap, deletion (no `Document`), and that a source file gets no `Document`
+- [x] 1.3 Emit `Plan` for changes under `openspec/changes/<name>/` (decision 3): the OpenSpec CLI with a 5 s limit, debounced, off the hook path; the default-layout fallback; only when it changed. Verify with tests: a fake `openspec` returning a custom schema with a feature brief first, no `openspec` on `PATH` (fallback with ticked and open tasks), a failing CLI (fallback), archive paths ignored, and one CLI call for a burst of writes
+- [x] 1.4 Verify end to end in `crates/core/tests/host_session.rs`: a fake `claude` writes a proposal and edits a tasks file through hooks; the timeline has the documents' full text and two `Plan` entries with the task count going up
 
 ## 2. View settings and the first-join question
 

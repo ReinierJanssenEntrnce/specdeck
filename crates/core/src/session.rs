@@ -4,8 +4,9 @@
 //! Terminal input comes only from the host, through [`HostSession::input`]. Nothing a viewer
 //! sends has a path to the pty.
 
+use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -17,11 +18,13 @@ use tempfile::NamedTempFile;
 use tokio::sync::{mpsc, watch};
 
 use crate::activity::{Activity, Change};
+use crate::documents::{self, DocumentText};
 use crate::environment::Environment;
 use crate::hooks::{self, HookEndpoint, HookPayload};
 use crate::launcher::{self, LaunchError, LaunchOptions};
 use crate::mirror::{Colors, Mirror, Responder};
 use crate::output_log::{Batcher, OutputLog};
+use crate::plans::{self, ChangeRef, Plans};
 use crate::shell_changes::{CommandChanges, ShellChanges};
 use crate::status::{self, StatusLineReader};
 use crate::timeline::{TimelineBuilder, stamp};
@@ -64,9 +67,12 @@ enum Command {
     },
     HostWindow(bool),
     Colors(Colors),
-    /// A hook payload, with what a finished shell command changed (decision 10b).
-    Hook(HookPayload, Option<CommandChanges>),
+    /// A hook payload, with what its handler saw right after the change: what a finished shell
+    /// command changed (decision 10b) and the text of changed documents.
+    Hook(HookPayload, Option<CommandChanges>, Vec<DocumentText>),
     Git(Entry),
+    /// The plan of an OpenSpec change the agent touched, read off the hook path.
+    Plan(Entry),
     Exited {
         code: u32,
     },
@@ -173,8 +179,11 @@ impl HostSession {
             let sender = commands.clone();
             let shell_changes = ShellChanges::new(&config.folder, &config.data_dir, env);
             let endpoint = HookEndpoint::start(move |payload| {
-                let changes = shell_changes.as_ref().and_then(|shell| shell.observe(&payload));
-                let _ = sender.send(Command::Hook(payload, changes));
+                let mut changes = shell_changes.as_ref().and_then(|shell| shell.observe(&payload));
+                let mut texts: Vec<DocumentText> =
+                    changes.as_mut().map(|c| std::mem::take(&mut c.documents)).unwrap_or_default();
+                texts.extend(documents::from_file_tool(&payload));
+                let _ = sender.send(Command::Hook(payload, changes, texts));
             })
             .await
             .map_err(io_error)?;
@@ -201,6 +210,10 @@ impl HostSession {
         spawn_reader(process.reader, commands.clone());
         spawn_exit_watcher(process.child, commands.clone());
         spawn_git_watcher(config.folder.clone(), env.clone(), commands.clone());
+        let plans = config
+            .agent
+            .has_timeline()
+            .then(|| spawn_plan_reader(&config.folder, env, commands.clone()));
 
         let (events, event_rx) = mpsc::unbounded_channel();
         let view = SessionView {
@@ -235,6 +248,9 @@ impl HostSession {
             usage: config.agent.has_timeline().then(|| UsageReader::new(usage::projects_dir(env))),
             status_line: StatusLineReader::default(),
             git: None,
+            plans,
+            plan_states: HashMap::new(),
+            folder: config.folder.clone(),
             timeline: session.timeline.clone(),
             status: session.status.clone(),
             host_entered: session.host_entered.clone(),
@@ -315,6 +331,10 @@ struct Pump {
     usage: Option<UsageReader>,
     status_line: StatusLineReader,
     git: Option<Entry>,
+    /// Where to send the OpenSpec changes the agent touches; their latest plans, by change.
+    plans: Option<std::sync::mpsc::Sender<ChangeRef>>,
+    plan_states: HashMap<String, Entry>,
+    folder: PathBuf,
     timeline: Arc<RwLock<Vec<TimelineEvent>>>,
     status: Arc<Mutex<AgentStatus>>,
     host_entered: Arc<Mutex<Option<Instant>>>,
@@ -376,10 +396,18 @@ impl Pump {
                         if attached { Responder::HostWindow } else { Responder::Mirror };
                 }
                 Some(Command::Colors(colors)) => self.mirror.set_colors(colors),
-                Some(Command::Hook(payload, changes)) => {
+                Some(Command::Hook(payload, changes, texts)) => {
                     // Entries link to the output before them, so append any pending batch first.
                     self.flush();
-                    self.handle_hook(payload, changes);
+                    self.handle_hook(payload, changes, texts);
+                }
+                Some(Command::Plan(entry)) => {
+                    if let Entry::Plan { change, .. } = &entry
+                        && self.plan_states.get(change) != Some(&entry)
+                    {
+                        self.plan_states.insert(change.clone(), entry.clone());
+                        self.emit_entry(entry);
+                    }
                 }
                 Some(Command::Git(entry)) => {
                     if self.git.as_ref() != Some(&entry) {
@@ -398,7 +426,12 @@ impl Pump {
         }
     }
 
-    fn handle_hook(&mut self, payload: HookPayload, changes: Option<CommandChanges>) {
+    fn handle_hook(
+        &mut self,
+        payload: HookPayload,
+        changes: Option<CommandChanges>,
+        texts: Vec<DocumentText>,
+    ) {
         if let Some(usage) = &mut self.usage {
             usage.on_hook(&payload);
         }
@@ -410,7 +443,7 @@ impl Pump {
                 self.emit_entry(entry);
             }
         } else {
-            self.handle_timeline(payload, changes);
+            self.handle_timeline(payload, changes, texts);
         }
         self.poll_usage();
     }
@@ -421,7 +454,12 @@ impl Pump {
         }
     }
 
-    fn handle_timeline(&mut self, payload: HookPayload, changes: Option<CommandChanges>) {
+    fn handle_timeline(
+        &mut self,
+        payload: HookPayload,
+        changes: Option<CommandChanges>,
+        texts: Vec<DocumentText>,
+    ) {
         match self.builder.handle(payload) {
             Ok(mut entries) => {
                 entries.extend(
@@ -430,6 +468,8 @@ impl Pump {
                         .into_iter()
                         .flatten(),
                 );
+                let entries = self.builder.with_documents(entries, texts);
+                self.touch_plans(&entries);
                 let changes = self.activity.on_entries(&entries);
                 // Show the timeline as available again before the entries that restored it.
                 self.apply(changes);
@@ -440,6 +480,18 @@ impl Pump {
             Err(error) => {
                 let changes = self.activity.on_bad_payload(error.to_string());
                 self.apply(changes);
+            }
+        }
+    }
+
+    /// Asks for the plan of every OpenSpec change these entries changed a file of.
+    fn touch_plans(&self, entries: &[Entry]) {
+        let Some(plans) = &self.plans else { return };
+        for entry in entries {
+            if let Entry::FileChange { path, .. } = entry
+                && let Some(change) = plans::change_of(&self.folder.join(path))
+            {
+                let _ = plans.send(change);
             }
         }
     }
@@ -505,6 +557,22 @@ fn spawn_reader(mut reader: Box<dyn Read + Send>, commands: mpsc::UnboundedSende
 }
 
 /// Waits for the agent to exit on a blocking thread.
+/// Reads the plans of touched OpenSpec changes on a thread of its own, until the session ends.
+fn spawn_plan_reader(
+    folder: &Path,
+    env: &Environment,
+    commands: mpsc::UnboundedSender<Command>,
+) -> std::sync::mpsc::Sender<ChangeRef> {
+    let (send, receive) = std::sync::mpsc::channel();
+    let plans = Plans::new(folder, env);
+    std::thread::spawn(move || {
+        plans.run(receive, |entry| {
+            let _ = commands.send(Command::Plan(entry));
+        })
+    });
+    send
+}
+
 /// How often the session folder's git state is checked.
 const GIT_INTERVAL: Duration = Duration::from_secs(5);
 

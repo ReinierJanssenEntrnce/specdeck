@@ -12,6 +12,7 @@ use serde_json::Value;
 use specdeck_protocol::timeline::{DiffHunk, FileChangeKind};
 use tempfile::TempDir;
 
+use crate::documents::{self, DocumentText};
 use crate::environment::Environment;
 use crate::hooks::HookPayload;
 
@@ -36,6 +37,8 @@ pub struct CommandChanges {
     pub prompt_id: String,
     pub tool_use_id: String,
     pub files: Vec<ChangedFile>,
+    /// The text the command left in the documents it created or changed.
+    pub documents: Vec<DocumentText>,
 }
 
 pub struct ShellChanges {
@@ -96,10 +99,17 @@ impl ShellChanges {
                     _ => before.1,
                 };
                 let files = inner.snapshots.diff(&base, &after);
+                let documents = files
+                    .iter()
+                    .filter(|file| file.change != FileChangeKind::Deleted)
+                    .filter(|file| documents::is_document(&file.path))
+                    .filter_map(|file| inner.snapshots.document(&after, &file.path))
+                    .collect();
                 (!files.is_empty()).then(|| CommandChanges {
                     prompt_id: text("prompt_id").unwrap_or_default().to_owned(),
                     tool_use_id: tool_use_id.to_owned(),
                     files,
+                    documents,
                 })
             }
             _ => None,
@@ -247,6 +257,32 @@ impl Snapshots {
         self.git(&args)
             .map(|patch| limit_lines(parse_hunks(&String::from_utf8_lossy(&patch))))
             .unwrap_or_default()
+    }
+
+    /// The text of the document at absolute `path` in snapshot `tree`.
+    fn document(&self, tree: &str, path: &str) -> Option<DocumentText> {
+        let name = self.relative(path)?;
+        let object = format!("{tree}:{name}");
+        let size: u64 = String::from_utf8_lossy(&self.git(&["cat-file", "-s", &object])?)
+            .trim()
+            .parse()
+            .ok()?;
+        let text = if size > documents::MAX_DOCUMENT_BYTES {
+            None
+        } else {
+            Some(String::from_utf8_lossy(&self.git(&["cat-file", "blob", &object])?).into_owned())
+        };
+        Some(DocumentText { path: path.to_owned(), text })
+    }
+
+    /// The path from the working tree's top of a path made by `absolute`.
+    fn relative(&self, path: &str) -> Option<String> {
+        let path = Path::new(path);
+        let name = match path.strip_prefix(&self.folder) {
+            Ok(inside) => Path::new(&self.prefix).join(inside),
+            Err(_) => path.strip_prefix(&self.top).ok()?.to_owned(),
+        };
+        Some(name.to_string_lossy().replace('\\', "/"))
     }
 
     /// Paths inside the session folder are joined to it as given, so they display relative to it.
@@ -492,6 +528,36 @@ mod tests {
         );
         let big = changed.iter().find(|f| f.0 == repo.path("a.txt")).unwrap();
         assert!(big.2.is_empty(), "one hunk over the line limit is left out");
+    }
+
+    #[test]
+    fn documents_come_with_their_text_from_the_snapshot() {
+        let repo = Repo::new();
+        repo.write("plan.md", "# Plan\n");
+        repo.write("old.md", "# Old\n");
+        repo.git(&["add", "."]);
+        repo.git(&["commit", "-q", "-m", "docs"]);
+        let tracker = repo.tracker();
+        tracker.observe(&hook("PreToolUse", "Bash", "t1"));
+        repo.write("plan.md", "# Plan\n\nA new step.\n");
+        repo.write("big.md", &"x".repeat(crate::documents::MAX_DOCUMENT_BYTES as usize + 1));
+        repo.write("a.txt", "not a document\n");
+        std::fs::remove_file(repo.dir.path().join("old.md")).unwrap();
+        // Changed again after the command: the text is the one the command left.
+        let changes = tracker.observe(&hook("PostToolUse", "Bash", "t1")).unwrap();
+        repo.write("plan.md", "# Later\n");
+        let mut documents = changes.documents;
+        documents.sort_by(|a, b| a.path.cmp(&b.path));
+        assert_eq!(
+            documents,
+            vec![
+                DocumentText { path: repo.path("big.md"), text: None },
+                DocumentText {
+                    path: repo.path("plan.md"),
+                    text: Some("# Plan\n\nA new step.\n".into())
+                },
+            ]
+        );
     }
 
     #[test]

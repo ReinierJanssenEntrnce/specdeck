@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 use specdeck_protocol::timeline::{DiffHunk, Entry, FileChangeKind, TimelineEvent, ToolStatus};
 
+use crate::documents::DocumentText;
 use crate::hooks::HookPayload;
 use crate::shell_changes::CommandChanges;
 
@@ -94,13 +95,19 @@ const FILE_READING_TOOLS: [&str; 1] = ["Read"];
 pub struct TimelineBuilder {
     /// Session folder; file paths inside it are shown relative to it.
     cwd: String,
+    /// The same folder with symlinks resolved, as the agent may report it (`/private/var` for
+    /// `/var` on macOS).
+    resolved_cwd: Option<std::path::PathBuf>,
     /// Tool calls without a result yet: tool_use_id → prompt_id, in call order.
     open_tools: Vec<(String, String)>,
 }
 
 impl TimelineBuilder {
     pub fn new(cwd: impl Into<String>) -> Self {
-        Self { cwd: cwd.into(), open_tools: Vec::new() }
+        let cwd = cwd.into();
+        let resolved_cwd =
+            Path::new(&cwd).canonicalize().ok().filter(|resolved| *resolved != Path::new(&cwd));
+        Self { cwd, resolved_cwd, open_tools: Vec::new() }
     }
 
     /// The event for starting the agent, which the engine emits itself.
@@ -194,6 +201,35 @@ impl TimelineBuilder {
         })
     }
 
+    /// `entries` with each document's text right after the change that produced it. A document
+    /// is only sent with a change of its own, and never for a deletion.
+    pub fn with_documents(&self, entries: Vec<Entry>, documents: Vec<DocumentText>) -> Vec<Entry> {
+        if documents.is_empty() {
+            return entries;
+        }
+        let mut out = Vec::with_capacity(entries.len() + documents.len());
+        for entry in entries {
+            let document = match &entry {
+                Entry::FileChange { prompt_id, tool_use_id, path, change, .. }
+                    if *change != FileChangeKind::Deleted =>
+                {
+                    documents.iter().find(|doc| self.display_path(&doc.path) == *path).map(|doc| {
+                        Entry::Document {
+                            prompt_id: prompt_id.clone(),
+                            tool_use_id: tool_use_id.clone(),
+                            path: path.clone(),
+                            text: doc.text.clone(),
+                        }
+                    })
+                }
+                _ => None,
+            };
+            out.push(entry);
+            out.extend(document);
+        }
+        out
+    }
+
     /// Entries for the files a shell command changed, after its result (decision 10b).
     pub fn command_changes(&self, changes: CommandChanges) -> Vec<Entry> {
         changes
@@ -232,7 +268,11 @@ impl TimelineBuilder {
 
     /// Paths inside the session folder relative to it; others unchanged.
     fn display_path(&self, path: &str) -> String {
-        match Path::new(path).strip_prefix(&self.cwd) {
+        let full = Path::new(path);
+        let inside = full.strip_prefix(&self.cwd).or_else(|e| {
+            self.resolved_cwd.as_ref().map_or(Err(e), |resolved| full.strip_prefix(resolved))
+        });
+        match inside {
             Ok(inside)
                 if !inside.as_os_str().is_empty()
                     && inside.components().all(|c| matches!(c, Component::Normal(_))) =>
@@ -269,6 +309,72 @@ mod tests {
 
     fn payload(value: serde_json::Value) -> HookPayload {
         value.as_object().unwrap().clone()
+    }
+
+    fn change(path: &str, change: FileChangeKind) -> Entry {
+        Entry::FileChange {
+            prompt_id: "p".into(),
+            tool_use_id: "t".into(),
+            path: path.into(),
+            change,
+            hunks: Vec::new(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn paths_under_a_symlinked_folder_are_shown_relative() {
+        let real = tempfile::tempdir().unwrap();
+        let links = tempfile::tempdir().unwrap();
+        let link = links.path().join("project");
+        std::os::unix::fs::symlink(real.path(), &link).unwrap();
+        let builder = TimelineBuilder::new(link.to_string_lossy());
+        let resolved = real.path().canonicalize().unwrap().join("docs/a.md");
+        assert_eq!(builder.display_path(&resolved.to_string_lossy()), "docs/a.md");
+        assert_eq!(builder.display_path(&link.join("b.md").to_string_lossy()), "b.md");
+        assert_eq!(builder.display_path("/elsewhere/c.md"), "/elsewhere/c.md");
+    }
+
+    #[test]
+    fn a_document_follows_its_change() {
+        let builder = TimelineBuilder::new("/work");
+        let entries = vec![
+            Entry::ToolResult {
+                prompt_id: "p".into(),
+                tool_use_id: "t".into(),
+                status: ToolStatus::Succeeded,
+                error: None,
+            },
+            change("docs/plan.md", FileChangeKind::Edited),
+            change("src/server.ts", FileChangeKind::Edited),
+            change("old.md", FileChangeKind::Deleted),
+            change("big.md", FileChangeKind::Created),
+        ];
+        let documents = vec![
+            DocumentText { path: "/work/big.md".into(), text: None },
+            DocumentText { path: "/work/docs/plan.md".into(), text: Some("# Plan".into()) },
+            // A document without a change of its own is never sent.
+            DocumentText { path: "/work/untouched.md".into(), text: Some("secret".into()) },
+        ];
+        let document = |path: &str, text: Option<&str>| Entry::Document {
+            prompt_id: "p".into(),
+            tool_use_id: "t".into(),
+            path: path.into(),
+            text: text.map(Into::into),
+        };
+        let with = builder.with_documents(entries.clone(), documents);
+        assert_eq!(
+            with,
+            [
+                entries[0].clone(),
+                entries[1].clone(),
+                document("docs/plan.md", Some("# Plan")),
+                entries[2].clone(),
+                entries[3].clone(),
+                entries[4].clone(),
+                document("big.md", None),
+            ]
+        );
     }
 
     #[test]
