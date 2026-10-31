@@ -14,7 +14,7 @@ SpecDeck today (the Electron app in `../claude-share`, version 0.x) lets a host 
 - New wire protocol, designed for this app. **BREAKING**: native SpecDeck 1.x and Electron SpecDeck 0.x cannot join each other's sessions, and 0.x recordings cannot be opened.
 - Native platform integration: system menus and shortcuts, tray/menu-bar presence while hosting, OS notifications, native dialogs, appearance that follows the OS, `specdeck://` join links, and footprint targets.
 - Distribution as with 0.x, taking over its names: a tag builds the installers into GitHub Releases of `nickhartjes/specdeck`, the Homebrew cask `specdeck` in `nickhartjes/homebrew-tap` follows each release, and a Nix flake builds SpecDeck from source on Linux. Installers are signed when certificates are configured.
-- MVP scope only. Not in this change (later changes): session recording and replay, chat/terminal interface modes, display scaling, custom theming beyond following the OS, auto-updates, buying and setting up signing certificates.
+- MVP scope only. Not in this change (later changes): session recording and replay, chat/terminal interface modes, display scaling, auto-updates, buying and setting up signing certificates. The 0.x Light/Dark/System theme choice is dropped, not deferred: 1.x always follows the OS appearance.
 
 ## Capabilities
 

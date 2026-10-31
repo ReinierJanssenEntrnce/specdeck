@@ -67,7 +67,7 @@ The app SHALL send OS notifications for events that need attention while its win
 - **THEN** the app shows no notifications
 
 ### Requirement: Follow the OS appearance
-The app SHALL follow the OS light or dark appearance and switch live when it changes. Window chrome, dialogs, menus and system fonts SHALL be the platform's own.
+The app SHALL follow the OS light or dark appearance and switch live when it changes, and SHALL NOT offer a theme setting of its own. Window chrome, dialogs, menus and system fonts SHALL be the platform's own.
 
 #### Scenario: OS switches to dark mode
 - **WHEN** the user switches the OS to dark mode while the app is open
