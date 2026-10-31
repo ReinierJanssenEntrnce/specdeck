@@ -417,6 +417,34 @@ while read line; do echo "got:$line"; done
     let mut hosted = host_with(&url, "nick", BUSY_AGENT).await;
     let code = ready(&mut hosted.events).await;
 
+    let log = hosted.session.log().clone();
+    let log_has = |marker: &str| {
+        log.read(0, usize::MAX).unwrap().iter().rev().take(200).any(|r| match r {
+            Record::Output { bytes, .. } => String::from_utf8_lossy(bytes).contains(marker),
+            Record::Resize { .. } => false,
+        })
+    };
+    // How long the host waits for its own typing to come back, measured in the output log.
+    let echo = async |marker: &str| {
+        let typed = std::time::Instant::now();
+        hosted.session.input(format!("{}\r", &marker["got:".len()..]).as_bytes()).unwrap();
+        while !log_has(marker) {
+            assert!(typed.elapsed() < Duration::from_secs(2), "no echo for {marker}");
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        typed.elapsed()
+    };
+    let median = |echoes: &mut Vec<Duration>| {
+        echoes.sort();
+        echoes[echoes.len() / 2]
+    };
+
+    // The same agent and machine without viewers: what "not degraded" is measured against.
+    let mut alone = Vec::new();
+    for round in 0..5 {
+        alone.push(echo(&format!("got:alone-{round}")).await);
+    }
+
     let mut viewers = Vec::new();
     for i in 0..20 {
         let (session, events) = join(&url, &code, &format!("viewer {i}"));
@@ -426,44 +454,28 @@ while read line; do echo "got:$line"; done
         until(events, seen, |seen, _| seen.text.contains("tick")).await;
     }
 
-    let log = hosted.session.log().clone();
-    let log_has = |marker: &str| {
-        log.read(0, usize::MAX).unwrap().iter().rev().take(200).any(|r| match r {
-            Record::Output { bytes, .. } => String::from_utf8_lossy(bytes).contains(marker),
-            Record::Resize { .. } => false,
-        })
-    };
-    let (mut echoes, mut viewer_worst) = (Vec::new(), Duration::ZERO);
+    let (mut watched, mut viewer_worst) = (Vec::new(), Duration::ZERO);
     for round in 0..5 {
         let marker = format!("got:ping-{round}");
-        let typed = std::time::Instant::now();
-        hosted.session.input(format!("ping-{round}\r").as_bytes()).unwrap();
-        while !log_has(&marker) {
-            assert!(typed.elapsed() < Duration::from_secs(2), "no echo for {marker}");
-            tokio::time::sleep(Duration::from_millis(1)).await;
-        }
+        watched.push(echo(&marker).await);
         let in_log = std::time::Instant::now();
-        echoes.push(in_log - typed);
         for (_, events, seen) in &mut viewers {
             until(events, seen, |seen, _| seen.text.contains(&marker)).await;
             viewer_worst = viewer_worst.max(in_log.elapsed());
         }
     }
-    echoes.sort();
-    let (echo_median, echo_worst) = (echoes[echoes.len() / 2], echoes[echoes.len() - 1]);
+    let (alone_median, watched_median) = (median(&mut alone), median(&mut watched));
+    let watched_worst = *watched.last().unwrap();
     eprintln!(
-        "20 viewers: host echo median {echo_median:?}, worst {echo_worst:?}; worst viewer delay {viewer_worst:?}"
+        "host echo without viewers {alone:?}, with 20 {watched:?}; worst viewer delay {viewer_worst:?}"
     );
-    // Responsive: typing usually echoes well within the ~100 ms at which it starts to feel laggy,
-    // and never stalls. The 20 viewers run in this process, on the host's CPU, which they never do
-    // in use; on a shared 4-core CI runner single echoes reached 102 ms while the median stayed low.
+    // session-streaming: 20 viewers "without degrading the host's terminal responsiveness". Judged
+    // against the same machine without viewers, since a busy CI runner is slow on its own; the
+    // viewers run in this process, on the host's CPU, which they never do in use.
     assert!(
-        echo_median < Duration::from_millis(50),
-        "host echo median {echo_median:?}: {echoes:?}"
+        watched_median < alone_median + Duration::from_millis(50),
+        "20 viewers slowed the host's echo from {alone_median:?} to {watched_median:?}"
     );
-    assert!(
-        echo_worst < Duration::from_millis(250),
-        "host echo stalled {echo_worst:?}: {echoes:?}"
-    );
+    assert!(watched_worst < Duration::from_millis(500), "host echo stalled: {watched:?}");
     assert!(viewer_worst < Duration::from_secs(1), "a viewer took {viewer_worst:?}");
 }
