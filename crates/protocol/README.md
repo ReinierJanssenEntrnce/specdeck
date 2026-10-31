@@ -1,0 +1,109 @@
+# specdeck-protocol
+
+The wire protocol between a host and its viewers. Both sides use this crate; it does no I/O. Design background: decisions 7 and 8 in [`design.md`](../../openspec/changes/native-shared-session-mvp/design.md).
+
+Current version: `PROTOCOL_VERSION = 1` ([`src/control.rs`](src/control.rs)). Not compatible with SpecDeck 0.x.
+
+## Connecting
+
+1. The host generates an [`InviteCode`](src/invite.rs): 12 random Crockford base32 characters (no I, L, O or U), shown as `7K2M-9QXH-4TPA`. When parsing, case, spaces and dashes are ignored, and O, I and L are read as 0, 1 and 1. A join link is `specdeck://join/<code>`.
+2. Both sides derive two values from the code with HKDF-SHA256 (salt `specdeck invite v1`):
+   - **room id** (info `room id`, 16 bytes, hex): the only thing the signalling service sees;
+   - **auth key** (info `auth key`, 32 bytes): never sent anywhere.
+3. The viewer's offer and the host's answer travel through the signalling service as [`SignedDescription`](src/signal_auth.rs)s: the SDP with an HMAC-SHA256 under the auth key over a version label, the kind (`offer` or `answer`), the connection id and the SDP, each length-prefixed. The receiver checks the tag for the expected kind and connection before using the SDP. The signalling service therefore cannot substitute DTLS fingerprints, or replay a description into another connection or direction.
+
+## Channels
+
+Each viewer has one WebRTC peer connection to the host with two reliable, ordered data channels:
+
+| Channel | Content | Encoding |
+|---|---|---|
+| `control` | Handshake, participants, status, session end | postcard ([`src/control.rs`](src/control.rs)) |
+| `stream` | Terminal records, history, timeline events | Signed binary frames ([`src/frames.rs`](src/frames.rs)) |
+
+## Control messages
+
+### Viewer to host
+
+Viewer messages come from untrusted peers. `decode_viewer` rejects messages over 1 KB, unknown variants, truncated messages and trailing bytes, and usernames that are empty, longer than 64 characters or contain control characters. There is deliberately **no message that carries terminal input**.
+
+| Message | Fields | Meaning |
+|---|---|---|
+| `Hello` | `protocol_version`, `username`, `last_output_seq?`, `last_event_seq?`, `resume_token?` | First message on a connection. When reconnecting, the `last_*` fields say where the viewer left off and `resume_token` lets it take its old place |
+| `Resend` | `from_output_seq` | Send records again from this sequence, after a gap or a failed verification |
+| `Leave` | | The viewer is leaving |
+
+### Host to viewer
+
+| Message | Fields | Meaning |
+|---|---|---|
+| `Welcome` | `protocol_version`, `viewer_id`, `session_public_key`, `cols`, `rows`, `resume_token`, `agent`, `timeline_supported` | Viewer admitted. `session_public_key` verifies every stream frame; `timeline_supported` is false for agents whose events are not captured (OpenCode, omp) |
+| `RejoinCode` | `code` | The current invite code, sent after `Welcome` and after every rotation, so an admitted viewer can reconnect after the host made a new code. A removed viewer does not get it |
+| `Refused` | `reason` | Not admitted: `ViewerOutdated`, `HostOutdated`, `SessionFull`, `Removed` or `SessionEnded`. `RefusalReason::message()` is the text to show. The host closes the connection afterwards |
+| `Participants` | `participants[]` (`id`, `username`, `role`, `label`) | Everyone in the session, on every change. `label` adds a suffix when usernames collide |
+| `Status` | `status` | `Starting`, `Working`, `Waiting`, `Exited` or `Unknown` (agents whose events are not captured) |
+| `SessionEnded` | | The host closed the session |
+
+### Handshake
+
+```
+viewer                                      host
+  | -- Hello {protocol_version, username} -->  |
+  |                                            |  check_version(), viewer limit
+  | <-- Refused {reason} ---------------------  |  (then the host closes the connection)
+  |  or                                        |
+  | <-- Welcome {..., session_public_key} ----  |
+  | <-- RejoinCode, Participants, Status -----  |
+  | <== history, then live records and ======  |
+  |     timeline events on `stream`             |
+```
+
+`check_version(host, viewer)` accepts only equal versions; otherwise the refusal says which side has to update. `Welcome`, including the signing key, is trusted only because the connection itself was authenticated with the invite code.
+
+## Stream frames
+
+Big-endian layout:
+
+| Field | Size | Notes |
+|---|---|---|
+| `kind` | 1 byte | `1` output, `2` resize, `3` history, `4` timeline event |
+| `seq` | 8 bytes | See below |
+| payload | rest | Output: terminal bytes. Resize: `cols` and `rows`, 2 bytes each. History: zstd-compressed postcard list of records. Event: UTF-8 JSON of a `TimelineEvent` |
+| signature | 64 bytes | Ed25519 over every byte before it |
+
+`FrameVerifier::decode` verifies the signature before parsing anything and returns `FrameError::BadSignature` when it does not match; the viewer discards the frame and sends `Resend`. Because the signature covers `kind` and `seq`, a frame cannot be moved or changed into another kind. A history batch decompresses to at most 64 MB and must contain consecutive records starting at its `seq`.
+
+### Sequence numbers
+
+- **Records** (output and resize) share one sequence: it starts at 0 and increases by one per record, with no gaps. A resize is a record, so a replay reproduces every size the host had.
+- **History** frames carry the sequence of their first record.
+- **Event** frames have their own sequence, starting at 0. Each event also has `outputSeq`: the newest record when it happened (-1 before any output), which links timeline entries to terminal positions.
+
+### Late join, reconnect and catch-up
+
+These are the same operation: the host starts sending records from a sequence number.
+
+- **Late join**: from record 0, as history batches until the viewer is close to live, then live records; and every timeline event from 0.
+- **Reconnect**: the viewer's `Hello` carries `last_output_seq` and `last_event_seq`; the host continues from the next ones.
+- **Slow viewer**: the host stops sending live records to a viewer whose send buffer is full, and continues from where it is with history batches once the buffer drains.
+
+A viewer applies a record only if its sequence is exactly one higher than the last one applied, and otherwise asks for the missing range with `Resend`.
+
+## Timeline events
+
+`TimelineEvent` ([`src/timeline.rs`](src/timeline.rs)) has `outputSeq`, `at` (milliseconds since the epoch) and an entry tagged by `kind`:
+
+| `kind` | Meaning |
+|---|---|
+| `session-started`, `session-ended` | Agent session lifecycle |
+| `prompt` | A prompt the host submitted |
+| `message` | Assistant text as it is shown (live; several per prompt) |
+| `response` | The final response of a prompt |
+| `tool-call` | A tool started |
+| `tool-result` | A tool finished: `succeeded`, `failed` (with `error`) or `not-run` |
+| `file-change` | A file created or edited, with diff hunks |
+| `file-read` | A file the agent read |
+| `timeline-unavailable` | Structured events cannot be captured; the terminal mirror still works |
+| `timeline-available` | Events arrive again |
+
+Entries of one prompt share `promptId`.

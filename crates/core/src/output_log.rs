@@ -19,19 +19,7 @@ pub const BATCH_INTERVAL: Duration = Duration::from_millis(16);
 /// Output is appended early when a batch grows this large.
 pub const MAX_BATCH_BYTES: usize = 64 * 1024;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Record {
-    Output { seq: u64, bytes: Vec<u8> },
-    Resize { seq: u64, cols: u16, rows: u16 },
-}
-
-impl Record {
-    pub fn seq(&self) -> u64 {
-        match self {
-            Record::Output { seq, .. } | Record::Resize { seq, .. } => *seq,
-        }
-    }
-}
+pub use specdeck_protocol::frames::Record;
 
 const KIND_OUTPUT: u8 = 1;
 const KIND_RESIZE: u8 = 2;

@@ -95,8 +95,12 @@ Viewers SHALL be able to join from a different network than the host, including 
 - **THEN** the viewer can join and receive the session
 
 #### Scenario: Direct connection blocked
-- **WHEN** a network blocks direct peer-to-peer connections
+- **WHEN** a network blocks direct peer-to-peer connections but allows UDP to the team's relay
 - **THEN** the connection goes through the team's relay and the session still works
+
+#### Scenario: Network blocks UDP
+- **WHEN** a viewer's network blocks UDP entirely, so neither a direct nor a relayed connection can be made
+- **THEN** the app tells the viewer that their network does not allow the connection, instead of waiting indefinitely
 
 ### Requirement: End-to-end encryption
 All session content (terminal output, timeline, diffs) SHALL be encrypted between host and viewer. The matchmaking service and the relay SHALL NOT be able to read session content or learn the invite code.

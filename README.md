@@ -16,6 +16,8 @@ Status: in development. What is being built is in [`openspec/changes/native-shar
 | [`app/src-tauri`](app/src-tauri) | Tauri shell: windows, menus, tray, commands |
 | [`app/ui`](app/ui) | Web UI (React, TypeScript, Vite) |
 | [`openspec`](openspec) | Specs and change proposals |
+| [`deploy/k8s`](deploy/k8s) | Kubernetes manifests for signalling and coturn (`base`, `local`) ([README](deploy/k8s/README.md)) |
+| [`docker`](docker) | Signalling service image |
 | [`scripts`](scripts) | Helper scripts used by the `just` recipes and CI |
 
 ## Development
@@ -30,7 +32,15 @@ just fmt       # format the Rust code
 just package   # build installers for this platform (target/release/bundle)
 ```
 
-Run `just` to list all recipes.
+Run `just` to list all recipes. For the server side on your own machine (Colima with Kubernetes, `colima start --kubernetes`):
+
+```sh
+just local-up      # deploy signalling and coturn to Colima's k3s
+just local-test    # check that two peers connect through the relay only
+just local-down    # remove the deployment
+```
+
+See [`deploy/k8s/README.md`](deploy/k8s/README.md) for ports, secrets and the differences from a real cluster.
 
 npm packages come from the registry your npm configuration points at. If that is the company's CodeArtifact and installs fail with `401 Unauthorized`, refresh the login:
 

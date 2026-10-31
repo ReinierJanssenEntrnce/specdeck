@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: specdeck-signalling
+  labels: { app: specdeck-signalling }
+spec:
+  # Rooms live in memory: run exactly one replica.
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: specdeck-signalling }
+  template:
+    metadata:
+      labels: { app: specdeck-signalling }
+    spec:
+      containers:
+        - name: signalling
+          image: specdeck-signalling:latest
+          ports:
+            - { containerPort: 8080, name: http }
+          env:
+            - { name: SPECDECK_LISTEN, value: "0.0.0.0:8080" }
+            # One proxy (the ingress) sits in front of the service; it adds the client's address
+            # to X-Forwarded-For, which the rate limits use.
+            - { name: SPECDECK_TRUSTED_PROXIES, value: "1" }
+            # A relayed session refreshes its allocation with these credentials: cover a long day.
+            - { name: SPECDECK_TURN_TTL_SECONDS, value: "43200" }
+            - name: SPECDECK_TURN_URLS
+              valueFrom: { configMapKeyRef: { name: specdeck-network, key: TURN_URLS } }
+            - name: SPECDECK_TURN_SECRET
+              valueFrom: { secretKeyRef: { name: specdeck-turn, key: TURN_SECRET } }
+            - { name: RUST_LOG, value: info }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 20m, memory: 16Mi }
+            limits: { memory: 128Mi }
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: specdeck-signalling
+spec:
+  selector: { app: specdeck-signalling }
+  ports:
+    - { port: 8080, targetPort: http, name: http }
+# Expose /signal (WebSocket) and /health through the cluster's ingress with TLS. The app connects
+# to wss://<host>/signal.

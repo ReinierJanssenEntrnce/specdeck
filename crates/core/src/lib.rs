@@ -4,6 +4,7 @@ pub mod activity;
 pub mod agent;
 pub mod environment;
 pub mod hooks;
+pub mod ice;
 pub mod launcher;
 pub mod mirror;
 pub mod output_log;

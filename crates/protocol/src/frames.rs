@@ -1,0 +1,269 @@
+//! Signed binary frames on the reliable `stream` channel (design decision 7).
+//!
+//! Layout, big-endian: `kind` (1 byte), `seq` (8 bytes), payload, Ed25519 signature (64 bytes)
+//! over every byte before it. Because the signature covers `kind` and `seq`, a frame cannot be
+//! moved to another position or turned into another kind without detection.
+
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier as _, VerifyingKey};
+use serde::{Deserialize, Serialize};
+
+use crate::timeline::TimelineEvent;
+
+const KIND_OUTPUT: u8 = 1;
+const KIND_RESIZE: u8 = 2;
+const KIND_HISTORY: u8 = 3;
+const KIND_EVENT: u8 = 4;
+const HEADER: usize = 1 + 8;
+const SIGNATURE: usize = 64;
+
+/// Largest history batch after decompression, so a malicious frame cannot exhaust memory.
+pub const MAX_HISTORY_BYTES: usize = 64 * 1024 * 1024;
+
+/// One record of a session's terminal history. Output and resizes share one gap-free sequence.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Record {
+    Output { seq: u64, bytes: Vec<u8> },
+    Resize { seq: u64, cols: u16, rows: u16 },
+}
+
+impl Record {
+    pub fn seq(&self) -> u64 {
+        match self {
+            Record::Output { seq, .. } | Record::Resize { seq, .. } => *seq,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Frame {
+    /// A live record.
+    Record(Record),
+    /// Consecutive records sent at once, zstd-compressed, for late join and catch-up.
+    History(Vec<Record>),
+    /// A timeline event; `seq` is the event sequence, separate from the record sequence.
+    Event { seq: u64, event: TimelineEvent },
+}
+
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+pub enum FrameError {
+    #[error("frame failed verification")]
+    BadSignature,
+    #[error("malformed frame")]
+    Malformed,
+}
+
+/// The host's per-session signing key.
+pub struct SessionKey(SigningKey);
+
+impl SessionKey {
+    pub fn generate() -> Self {
+        let mut secret = [0u8; 32];
+        getrandom::fill(&mut secret).expect("no random source");
+        Self(SigningKey::from_bytes(&secret))
+    }
+
+    /// Sent to viewers in `Welcome`.
+    pub fn public_key(&self) -> [u8; 32] {
+        self.0.verifying_key().to_bytes()
+    }
+
+    pub fn encode(&self, frame: &Frame) -> Vec<u8> {
+        let (kind, seq, payload) = match frame {
+            Frame::Record(Record::Output { seq, bytes }) => (KIND_OUTPUT, *seq, bytes.clone()),
+            Frame::Record(Record::Resize { seq, cols, rows }) => {
+                (KIND_RESIZE, *seq, [cols.to_be_bytes(), rows.to_be_bytes()].concat())
+            }
+            Frame::History(records) => {
+                let first = records.first().map_or(0, Record::seq);
+                (KIND_HISTORY, first, encode_history(records))
+            }
+            Frame::Event { seq, event } => {
+                (KIND_EVENT, *seq, serde_json::to_vec(event).expect("events always encode"))
+            }
+        };
+        let mut bytes = Vec::with_capacity(HEADER + payload.len() + SIGNATURE);
+        bytes.push(kind);
+        bytes.extend_from_slice(&seq.to_be_bytes());
+        bytes.extend_from_slice(&payload);
+        let signature = self.0.sign(&bytes);
+        bytes.extend_from_slice(&signature.to_bytes());
+        bytes
+    }
+}
+
+/// Checks and decodes frames from one session's host.
+pub struct FrameVerifier(VerifyingKey);
+
+impl FrameVerifier {
+    pub fn new(public_key: &[u8; 32]) -> Result<Self, FrameError> {
+        VerifyingKey::from_bytes(public_key).map(Self).map_err(|_| FrameError::Malformed)
+    }
+
+    /// Verifies before parsing anything.
+    pub fn decode(&self, bytes: &[u8]) -> Result<Frame, FrameError> {
+        if bytes.len() < HEADER + SIGNATURE {
+            return Err(FrameError::Malformed);
+        }
+        let (signed, signature) = bytes.split_at(bytes.len() - SIGNATURE);
+        let signature = Signature::from_slice(signature).map_err(|_| FrameError::Malformed)?;
+        self.0.verify(signed, &signature).map_err(|_| FrameError::BadSignature)?;
+
+        let kind = signed[0];
+        let seq = u64::from_be_bytes(signed[1..HEADER].try_into().unwrap());
+        let payload = &signed[HEADER..];
+        Ok(match kind {
+            KIND_OUTPUT => Frame::Record(Record::Output { seq, bytes: payload.to_vec() }),
+            KIND_RESIZE => {
+                let [c0, c1, r0, r1] = payload.try_into().map_err(|_| FrameError::Malformed)?;
+                Frame::Record(Record::Resize {
+                    seq,
+                    cols: u16::from_be_bytes([c0, c1]),
+                    rows: u16::from_be_bytes([r0, r1]),
+                })
+            }
+            KIND_HISTORY => {
+                let records = decode_history(payload)?;
+                if records.first().map_or(0, Record::seq) != seq {
+                    return Err(FrameError::Malformed);
+                }
+                Frame::History(records)
+            }
+            KIND_EVENT => Frame::Event {
+                seq,
+                event: serde_json::from_slice(payload).map_err(|_| FrameError::Malformed)?,
+            },
+            _ => return Err(FrameError::Malformed),
+        })
+    }
+}
+
+/// Records as postcard, compressed with zstd.
+fn encode_history(records: &[Record]) -> Vec<u8> {
+    let raw = postcard::to_allocvec(records).expect("records always encode");
+    zstd::bulk::compress(&raw, 3).expect("compression into memory")
+}
+
+fn decode_history(payload: &[u8]) -> Result<Vec<Record>, FrameError> {
+    let raw =
+        zstd::bulk::decompress(payload, MAX_HISTORY_BYTES).map_err(|_| FrameError::Malformed)?;
+    let records: Vec<Record> = match postcard::take_from_bytes(&raw) {
+        Ok((records, [])) => records,
+        _ => return Err(FrameError::Malformed),
+    };
+    // A batch is consecutive records.
+    if records.windows(2).any(|pair| pair[1].seq() != pair[0].seq() + 1) {
+        return Err(FrameError::Malformed);
+    }
+    Ok(records)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::timeline::Entry;
+
+    fn keys() -> (SessionKey, FrameVerifier) {
+        let key = SessionKey::generate();
+        let verifier = FrameVerifier::new(&key.public_key()).unwrap();
+        (key, verifier)
+    }
+
+    fn output(seq: u64, text: &str) -> Frame {
+        Frame::Record(Record::Output { seq, bytes: text.as_bytes().to_vec() })
+    }
+
+    #[test]
+    fn every_kind_round_trips() {
+        let (key, verifier) = keys();
+        let frames = [
+            output(0, "hello"),
+            output(1, ""),
+            Frame::Record(Record::Resize { seq: 2, cols: 120, rows: 40 }),
+            Frame::History(vec![
+                Record::Output { seq: 3, bytes: b"\x1b[2Jredraw".repeat(100) },
+                Record::Resize { seq: 4, cols: 80, rows: 24 },
+            ]),
+            Frame::Event {
+                seq: 0,
+                event: TimelineEvent { output_seq: -1, at: 5, entry: Entry::SessionStarted },
+            },
+        ];
+        for frame in frames {
+            assert_eq!(verifier.decode(&key.encode(&frame)), Ok(frame));
+        }
+    }
+
+    #[test]
+    fn history_is_compressed() {
+        let (key, _) = keys();
+        let records =
+            vec![Record::Output { seq: 0, bytes: b"\x1b[2K\rThinking...".repeat(10_000) }];
+        assert!(key.encode(&Frame::History(records)).len() < 10_000);
+    }
+
+    #[test]
+    fn tampered_payload_fails_verification() {
+        let (key, verifier) = keys();
+        let mut bytes = key.encode(&output(7, "rm -rf ~"));
+        bytes[HEADER] ^= 1;
+        assert_eq!(verifier.decode(&bytes), Err(FrameError::BadSignature));
+    }
+
+    #[test]
+    fn moved_sequence_fails_verification() {
+        let (key, verifier) = keys();
+        let mut bytes = key.encode(&output(7, "x"));
+        bytes[8] = 8;
+        assert_eq!(verifier.decode(&bytes), Err(FrameError::BadSignature));
+    }
+
+    #[test]
+    fn changed_kind_fails_verification() {
+        let (key, verifier) = keys();
+        let mut bytes = key.encode(&output(7, "abcd"));
+        bytes[0] = KIND_RESIZE;
+        assert_eq!(verifier.decode(&bytes), Err(FrameError::BadSignature));
+    }
+
+    #[test]
+    fn frame_from_another_session_fails_verification() {
+        let (key, _) = keys();
+        let (_, other) = keys();
+        assert_eq!(other.decode(&key.encode(&output(0, "x"))), Err(FrameError::BadSignature));
+    }
+
+    #[test]
+    fn short_frame_is_malformed() {
+        let (_, verifier) = keys();
+        assert_eq!(verifier.decode(&[1; HEADER + SIGNATURE - 1]), Err(FrameError::Malformed));
+    }
+
+    #[test]
+    fn signed_but_malformed_frames_are_rejected() {
+        let (key, verifier) = keys();
+        let sign = |kind: u8, seq: u64, payload: &[u8]| {
+            let mut bytes = vec![kind];
+            bytes.extend_from_slice(&seq.to_be_bytes());
+            bytes.extend_from_slice(payload);
+            let signature = key.0.sign(&bytes);
+            bytes.extend_from_slice(&signature.to_bytes());
+            bytes
+        };
+        assert_eq!(verifier.decode(&sign(9, 0, b"")), Err(FrameError::Malformed));
+        assert_eq!(verifier.decode(&sign(KIND_RESIZE, 0, b"abc")), Err(FrameError::Malformed));
+        assert_eq!(
+            verifier.decode(&sign(KIND_HISTORY, 0, b"not zstd")),
+            Err(FrameError::Malformed)
+        );
+        assert_eq!(verifier.decode(&sign(KIND_EVENT, 0, b"{}")), Err(FrameError::Malformed));
+        // A batch whose records are not consecutive.
+        let gap = encode_history(&[
+            Record::Output { seq: 0, bytes: vec![] },
+            Record::Output { seq: 2, bytes: vec![] },
+        ]);
+        assert_eq!(verifier.decode(&sign(KIND_HISTORY, 0, &gap)), Err(FrameError::Malformed));
+        // A batch whose header sequence does not match its first record.
+        let batch = encode_history(&[Record::Output { seq: 5, bytes: vec![] }]);
+        assert_eq!(verifier.decode(&sign(KIND_HISTORY, 4, &batch)), Err(FrameError::Malformed));
+    }
+}

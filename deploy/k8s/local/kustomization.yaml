@@ -1,0 +1,46 @@
+# Local test deployment on Colima's k3s: the production manifests, with only what differs on a
+# laptop patched in. Deploy with `just k8s-up`, remove with `just k8s-down` (deploy/k8s/README.md).
+#
+# Its own namespace and TURN port (3480), so it runs next to SpecDeck 0.x's local deployment
+# (namespace specdeck-local, ports 3478 and 49160-49179) and next to `just local-up` (3479).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: specdeck1-local
+resources:
+  - namespace.yaml
+  - ../base
+patches:
+  # The signalling image is built into Colima's Docker, which k3s uses directly: never pull it.
+  # No ingress in front locally. TURN is reached on the node's address, which only the pod knows.
+  - target: { kind: Deployment, name: specdeck-signalling }
+    patch: |-
+      - { op: replace, path: /spec/template/spec/containers/0/image, value: "specdeck-signalling:local" }
+      - { op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: Never }
+      - { op: test, path: /spec/template/spec/containers/0/env/1/name, value: SPECDECK_TRUSTED_PROXIES }
+      - { op: replace, path: /spec/template/spec/containers/0/env/1/value, value: "0" }
+      - { op: test, path: /spec/template/spec/containers/0/env/3/name, value: SPECDECK_TURN_URLS }
+      - op: replace
+        path: /spec/template/spec/containers/0/env/3
+        value: { name: SPECDECK_TURN_URLS, value: "turn:$(NODE_IP):3480?transport=udp" }
+      - op: add
+        path: /spec/template/spec/containers/0/env/0
+        value: { name: NODE_IP, valueFrom: { fieldRef: { fieldPath: status.hostIP } } }
+  # Locally both peers are always relayed through this one coturn, so relay traffic stays inside
+  # the pod: coturn advertises the pod's own address, the relay ports are not exposed, and the
+  # range is wide enough for allocations that linger after earlier test runs.
+  - target: { kind: Deployment, name: specdeck-turn }
+    patch: |-
+      - { op: test, path: /spec/template/spec/containers/0/env/1/name, value: TURN_EXTERNAL_IP }
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1
+        value: { name: TURN_EXTERNAL_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
+      - { op: test, path: /spec/template/spec/containers/0/args/2, value: "--min-port=49160" }
+      - { op: replace, path: /spec/template/spec/containers/0/args/2, value: "--min-port=51000" }
+      - { op: test, path: /spec/template/spec/containers/0/args/3, value: "--max-port=49179" }
+      - { op: replace, path: /spec/template/spec/containers/0/args/3, value: "--max-port=51999" }
+  - target: { kind: Service, name: specdeck-turn }
+    patch: |-
+      - op: replace
+        path: /spec/ports
+        value:
+          - { name: turn-udp, port: 3480, targetPort: 3478, protocol: UDP }

@@ -120,7 +120,9 @@ Same scheme as SpecDeck 0.x, reimplemented:
 
 ### 9. Signalling service and TURN
 
-`crates/signalling`: an `axum` WebSocket service with in-memory rooms. It relays authenticated SDP and ICE messages, rate-limits join attempts per client IP and room, and issues short-lived TURN credentials (TURN REST API shared secret). coturn listens on UDP and TCP/TLS 443. Deployment follows SpecDeck 0.x's Kubernetes setup in a separate namespace; the open port-exposure question with the cluster operators (0.x README, Status) applies here too. Local development uses coturn in a container.
+`crates/signalling`: an `axum` WebSocket service with in-memory rooms. It relays authenticated SDP and ICE messages, confirms opened rooms, rate-limits join attempts per client IP and room, and issues short-lived TURN credentials (TURN REST API shared secret). coturn listens on UDP.
+
+- **TURN over UDP only (MVP)**: libdatachannel's bundled ICE backend, libjuice, does not support TURN over TCP or TLS. Viewers on networks that block UDP entirely cannot connect; the app says so instead of waiting. Decided for the MVP; the pilot shows whether a TCP/443 path is needed. *Alternatives, if it is*: libdatachannel built with libnice (TURN over TCP/TLS, but GLib in every build and installer), or a fallback that tunnels the stream through the signalling service over TLS 443 with app-level end-to-end encryption. Deployment follows SpecDeck 0.x's Kubernetes setup in a separate namespace; the open port-exposure question with the cluster operators (0.x README, Status) applies here too. Local development uses coturn in a container.
 
 ### 10. Timeline from Claude Code HTTP hooks
 
@@ -164,6 +166,8 @@ Reference machines: Apple M1 with 8 GB (macOS 15), an x64 laptop with 8 GB (Wind
 - [Claude Code changes its hook payloads] → One adapter with fixture tests; degraded mode keeps the terminal mirror working.
 - [App crash ends the session for everyone] → Accepted for the MVP (decision 2); sidecar daemon possible later.
 - [0.x and 1.x users try to share with each other] → They cannot meet (different signalling); release notes and the in-app "invalid code" message mention that both sides need SpecDeck 1.x.
+- [Networks that block UDP entirely (some corporate networks)] → Cannot connect in the MVP (TURN over UDP only, decision 9); clear message to the user; revisit after the pilot.
+- [coturn refuses a new allocation from an address it still holds one for (437), for example after a quick restart; libjuice does not retry] → The engine recreates the peer connection, and with it its socket, when no relay candidate arrives.
 - [Invite code brute force] → 60-bit codes, signalling rate limits, codes valid only while the session is open.
 
 ## Migration Plan
