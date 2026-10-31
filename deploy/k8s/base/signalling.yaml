@@ -13,6 +13,8 @@ spec:
     metadata:
       labels: { app: specdeck-signalling }
     spec:
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: signalling
           image: specdeck-signalling:latest

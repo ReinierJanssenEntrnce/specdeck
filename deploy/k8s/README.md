@@ -44,6 +44,10 @@ Kubernetes Services cannot declare port ranges, so [`base/coturn.yaml`](base/cot
 
 coturn refuses to relay to private and link-local address ranges (`--denied-peer-ip`), so TURN credentials cannot be used to reach services inside the cluster. The one exception is the pod's own address, so two relayed peers can meet on the same coturn.
 
+## Unprivileged pods
+
+Both pods meet the Kubernetes `restricted` Pod Security Standard: they run as a non-root user (signalling as 10001, coturn as `nobody`, 65534) on a read-only root filesystem, without privilege escalation, with the runtime's default seccomp profile and with all capabilities dropped. coturn keeps only `NET_BIND_SERVICE`, because its binary carries that file capability and cannot be started without it; its pid file goes to an `emptyDir`. The local namespace enforces the level (`pod-security.kubernetes.io/enforce: restricted`), so a change that needs more privileges fails to deploy there. Label your production namespace the same way if the cluster does not already enforce it.
+
 ## Local deployment
 
 Needs Colima with Kubernetes (`colima start --kubernetes`), whose k3s uses Colima's Docker, so the signalling image is built locally and never pulled.

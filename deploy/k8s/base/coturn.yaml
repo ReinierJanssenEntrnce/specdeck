@@ -11,6 +11,8 @@ spec:
     metadata:
       labels: { app: specdeck-turn }
     spec:
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: coturn
           image: coturn/coturn:4.7
@@ -26,6 +28,8 @@ spec:
             - --use-auth-secret
             - --static-auth-secret=$(TURN_SECRET)
             - --fingerprint
+            # The root filesystem is read-only; the pid file goes to the writable state volume.
+            - --pidfile=/var/lib/coturn/turnserver.pid
             - --no-cli
             # The app reaches TURN over UDP only (libjuice has no TURN over TCP or TLS).
             - --no-tcp
@@ -57,6 +61,20 @@ spec:
           resources:
             requests: { cpu: 100m, memory: 64Mi }
             limits: { memory: 256Mi }
+          securityContext:
+            # The image's user nobody, numeric so Kubernetes can check runAsNonRoot.
+            runAsUser: 65534
+            runAsGroup: 65534
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            # turnserver carries the file capability to bind low ports; without it in the
+            # bounding set the binary cannot even be executed.
+            capabilities: { drop: [ALL], add: [NET_BIND_SERVICE] }
+          volumeMounts:
+            - { name: state, mountPath: /var/lib/coturn }
+      volumes:
+        - { name: state, emptyDir: {} }
 ---
 # TURN needs UDP and its relay ports reachable from outside, on the same port numbers coturn
 # advertises. Kubernetes Services cannot declare port ranges, so every relay port is listed.
