@@ -100,7 +100,14 @@ async fn terminal_only_agent_takes_host_input_and_resizes() {
         entries,
         [
             Entry::SessionStarted,
-            Entry::Git { branch: None, dirty: false, ahead: 0, behind: 0, worktree: None }
+            Entry::Git {
+                folder: bin.path().file_name().unwrap().to_string_lossy().into(),
+                branch: None,
+                dirty: false,
+                ahead: 0,
+                behind: 0,
+                worktree: None
+            }
         ]
     );
     assert_eq!(session.status(), AgentStatus::Unknown);

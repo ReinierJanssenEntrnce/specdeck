@@ -99,8 +99,10 @@ pub enum Entry {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         seven_day: Option<RateLimit>,
     },
-    /// The git state of the session folder; each one replaces the previous.
+    /// The session folder's name and git state; each one replaces the previous.
     Git {
+        /// The folder's name, without the rest of the host's path.
+        folder: String,
         /// `None` when the folder is not in a git repository.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         branch: Option<String>,

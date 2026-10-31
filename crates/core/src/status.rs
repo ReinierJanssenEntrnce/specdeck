@@ -150,8 +150,12 @@ pub fn git_entry(folder: &Path, env: &Environment) -> Entry {
     let mut branch = None;
     let (mut dirty, mut ahead, mut behind) = (false, 0, 0);
     let mut worktree = None;
+    let folder_name = folder.file_name().map_or_else(
+        || folder.to_string_lossy().into_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
     let Some(git) = env.find_executable("git") else {
-        return Entry::Git { branch, dirty, ahead, behind, worktree };
+        return Entry::Git { folder: folder_name, branch, dirty, ahead, behind, worktree };
     };
     let run = |args: &[&str]| {
         let mut command = Command::new(&git);
@@ -195,7 +199,7 @@ pub fn git_entry(folder: &Path, env: &Environment) -> Entry {
             worktree = Path::new(top).file_name().map(|name| name.to_string_lossy().into_owned());
         }
     }
-    Entry::Git { branch, dirty, ahead, behind, worktree }
+    Entry::Git { folder: folder_name, branch, dirty, ahead, behind, worktree }
 }
 
 #[cfg(test)]
@@ -375,6 +379,7 @@ mod tests {
         assert_eq!(
             git_entry(dir.path(), &env),
             Entry::Git {
+                folder: dir.path().file_name().unwrap().to_string_lossy().into(),
                 branch: Some("main".into()),
                 dirty: false,
                 ahead: 0,
@@ -400,6 +405,7 @@ mod tests {
         assert_eq!(
             git_entry(&linked, &env),
             Entry::Git {
+                folder: "wt-feature".into(),
                 branch: Some("feature".into()),
                 dirty: false,
                 ahead: 0,
