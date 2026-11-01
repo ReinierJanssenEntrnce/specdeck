@@ -6,9 +6,9 @@
 
 SpecDeck lets one person (the **host**) run a coding agent (Claude Code, OpenCode or omp) on their computer while teammates (the **viewers**) follow along from anywhere. Viewers see the terminal and, for Claude Code, a timeline of prompts, answers, tool calls and file diffs. They join with an invite code and are read-only: only the host types into the agent, on the host's own login.
 
-This is SpecDeck 1.x, a native rewrite of the Electron app (0.x, in `../claude-share`) on Tauri 2 with a Rust session engine. 1.x and 0.x cannot join each other's sessions.
+SpecDeck is a native app built on Tauri 2 with a Rust session engine.
 
-How to use the app: [docs/user-guide.md](docs/user-guide.md). What the app does is specified in [`openspec/specs`](openspec/specs); the design decisions are in the archived change [`native-shared-session-mvp`](openspec/changes/archive/2026-10-31-native-shared-session-mvp/design.md), and the work left before 1.0 is in [`openspec/changes/release-and-verification`](openspec/changes/release-and-verification).
+Documentation, for using the app and for running your own sharing service: **[nickhartjes.github.io/specdeck](https://nickhartjes.github.io/specdeck/)** (source in [`docs/site`](docs/site)). What the app does is specified in [`openspec/specs`](openspec/specs); the design decisions are in the archived change [`native-shared-session-mvp`](openspec/changes/archive/2026-10-31-native-shared-session-mvp/design.md), and the work left before 1.0 is in [`openspec/changes/release-and-verification`](openspec/changes/release-and-verification).
 
 ## Install
 
@@ -22,8 +22,6 @@ With Nix, add it to a system or home configuration through the flake's `packages
 
 Releases built before the signing certificates are in place are unsigned, so the system warns on first launch. On macOS, allow SpecDeck once under System Settings > Privacy & Security (Open Anyway), or run `xattr -dr com.apple.quarantine /Applications/SpecDeck.app`; the Homebrew cask says the same when it installs an unsigned release. On Windows, choose More info > Run anyway in the SmartScreen prompt.
 
-SpecDeck 1.x replaces 0.x under the same names: `brew upgrade` and flake updates move 0.x installs to 1.x, which cannot join 0.x sessions, so a team switches together.
-
 ## Repository layout
 
 | Path | Contents |
@@ -34,7 +32,9 @@ SpecDeck 1.x replaces 0.x under the same names: `brew upgrade` and flake updates
 | [`app/src-tauri`](app/src-tauri) | Tauri shell: windows, menus, tray, commands |
 | [`app/ui`](app/ui) | Web UI (React, TypeScript, Vite) |
 | [`openspec`](openspec) | Specs and change proposals |
+| [`deploy/compose`](deploy/compose) | Docker Compose setup for signalling, coturn and Caddy on one server |
 | [`deploy/k8s`](deploy/k8s) | Kubernetes manifests for signalling and coturn (`base`, `local`) ([README](deploy/k8s/README.md)) |
+| [`docs/site`](docs/site) | Documentation site (Astro Starlight), published to GitHub Pages by [`docs.yml`](.github/workflows/docs.yml) |
 | [`docker`](docker) | Signalling service image |
 | [`scripts`](scripts) | Helper scripts used by the `just` recipes and CI |
 
@@ -48,6 +48,7 @@ just dev       # start the desktop app in development mode
 just check     # check formatting, lint, type-check and test (Rust and UI)
 just fmt       # format the Rust code
 just package   # build installers for this platform (target/release/bundle)
+just docs      # documentation site with live reload
 ```
 
 Run `just` to list all recipes. To try sharing on your own machine (Colima with Kubernetes, `colima start --kubernetes`):
@@ -62,12 +63,6 @@ just local-down    # remove the deployment
 `just local-dev` opens two windows, **SpecDeck (host)** and **SpecDeck (viewer)**, each with its own settings (`SPECDECK_PROFILE`, debug builds only). Host a session in one and join with its invite code in the other. To look at the UI without a session, run `pnpm --filter @specdeck/ui dev` and open `http://localhost:5173/?demo=start`, `?demo=host` or `?demo=viewer` in a browser.
 
 See [`deploy/k8s/README.md`](deploy/k8s/README.md) for ports, secrets and the differences from a real cluster.
-
-npm packages come from the registry your npm configuration points at. If that is the company's CodeArtifact and installs fail with `401 Unauthorized`, refresh the login:
-
-```sh
-aws codeartifact login --tool npm --repository npm-store --domain entrnce --domain-owner 350124346922 --region eu-central-1 --profile entrnce
-```
 
 ## CI
 

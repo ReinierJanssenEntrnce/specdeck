@@ -1,0 +1,49 @@
+---
+title: SpecDeck
+description: Run a coding agent with your team watching along.
+template: splash
+hero:
+  tagline: Run a coding agent on your computer while your teammates follow along from anywhere, read-only.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Install SpecDeck
+      link: /specdeck/install/
+      icon: right-arrow
+    - text: First steps
+      link: /specdeck/guide/first-steps/
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Host" icon="laptop">
+    Start Claude Code, OpenCode, omp or a plain terminal in a project folder and share the invite code. Only you type
+    into the agent, on your own login.
+  </Card>
+  <Card title="Watch" icon="open-book">
+    Viewers see the terminal and, for Claude Code, a timeline of prompts, answers, tool calls and file diffs. Everyone
+    scrolls and searches at their own pace.
+  </Card>
+  <Card title="Peer to peer" icon="random">
+    The session goes straight from host to viewers, encrypted. The sharing service only introduces them and cannot read
+    the session.
+  </Card>
+  <Card title="Your own server" icon="setting">
+    Teams can run their own sharing service with Docker Compose or Kubernetes and point SpecDeck at it in Settings.
+  </Card>
+</CardGrid>
+
+## Where to go next
+
+<CardGrid>
+  <LinkCard title="Install" description="macOS, Windows and Linux." href="/specdeck/install/" />
+  <LinkCard title="Host a session" description="Share an agent or your terminal." href="/specdeck/guide/host/" />
+  <LinkCard title="Join a session" description="With a code or a link." href="/specdeck/guide/join/" />
+  <LinkCard
+    title="Run your own server"
+    description="The signalling service and TURN relay."
+    href="/specdeck/self-host/overview/"
+  />
+</CardGrid>

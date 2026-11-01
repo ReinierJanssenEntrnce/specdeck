@@ -16,13 +16,13 @@
 
 - [x] 3.1 Add a command that normalizes and saves the sharing service (empty clears it), then checks it by opening a WebSocket with a 5 s timeout and returns the result (design decision 3); verify with tests against a local signalling service (reachable), a closed port (unreachable) and a refused input
 - [x] 3.2 Add the Sharing service field to `SettingsScreen.tsx`: built-in service as placeholder, check result and "not encrypted" for `ws://` in the hint, disabled with an explanation during a session or when the environment overrides it; verify with `SettingsScreen.test.tsx` cases for each state and the a11y test
-- [ ] 3.3 Describe the setting in `docs/user-guide.md` (Settings section: what it is for, that it applies to the next session, that a team on its own service shares links rather than bare codes); verify against the running app
+- [ ] 3.3 Describe the setting in the user guide (`docs/site/src/content/docs/guide/settings.md`: what it is for, that it applies to the next session, that a team on its own service shares links rather than bare codes); verify against the running app
 
 ## 4. Joining through another service
 
 - [x] 4.1 Pass the link's service through join-link handling (opened links and links pasted into the Join field) and compare it with the viewer's effective service; verify with unit tests for same service, different service and no service
 - [x] 4.2 Add the question on the start screen (host name, unchecked "Use this service from now on", hidden when the environment overrides; Cancel connects nowhere) and join through the link's service when accepted, saving it when the box is checked (design decision 5); verify with UI tests for join once, join and keep, cancel, and same service without a question
-- [ ] 4.3 Describe joining through another team's service in `docs/user-guide.md` (Join a session); verify the wording against the running app
+- [ ] 4.3 Describe joining through another team's service in the user guide (`docs/site/src/content/docs/guide/join.md`); verify the wording against the running app
 
 ## 5. Integration
 
