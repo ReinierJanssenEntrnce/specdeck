@@ -1,5 +1,6 @@
 //! What the app remembers between runs: the user's name, recent folders, last used agent,
-//! whether to show notifications, how the user follows sessions and their sharing service.
+//! whether to show notifications, how the user follows sessions, their sharing service and how
+//! far the main window is zoomed.
 //! Stored as JSON in the app's config directory.
 
 use std::path::{Path, PathBuf};
@@ -9,6 +10,10 @@ use specdeck_protocol::AgentId;
 
 /// Recent folders listed on the start screen.
 pub const MAX_RECENT: usize = 5;
+
+/// The zoom levels of the main window, in percent, as in browsers.
+pub const ZOOM_STEPS: [u16; 11] = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
+pub const ZOOM_DEFAULT: u16 = 100;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -22,6 +27,8 @@ pub struct Settings {
     pub view: Option<View>,
     /// The sharing service as a normalized URL; `None` for the one built into the app.
     pub sharing_service: Option<String>,
+    /// The main window's zoom in percent; one level whether hosting or viewing.
+    pub zoom: u16,
 }
 
 /// How a participant follows a session (`viewer-views` design decision 4).
@@ -50,6 +57,7 @@ impl Default for Settings {
             notifications: true,
             view: None,
             sharing_service: None,
+            zoom: ZOOM_DEFAULT,
         }
     }
 }
@@ -96,6 +104,16 @@ impl Settings {
     }
 }
 
+/// The next zoom step above `zoom`, or the largest.
+pub fn zoom_in(zoom: u16) -> u16 {
+    ZOOM_STEPS.into_iter().find(|&step| step > zoom).unwrap_or(ZOOM_STEPS[ZOOM_STEPS.len() - 1])
+}
+
+/// The next zoom step below `zoom`, or the smallest.
+pub fn zoom_out(zoom: u16) -> u16 {
+    ZOOM_STEPS.into_iter().rev().find(|&step| step < zoom).unwrap_or(ZOOM_STEPS[0])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +139,34 @@ mod tests {
         assert!(settings.existing_recent().is_empty());
         // Removing from the list does not touch the folder.
         assert!(dir.path().exists());
+    }
+
+    #[test]
+    fn zoom_is_100_until_changed_and_then_remembered() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        // Settings saved before zoom existed still load, at 100%.
+        std::fs::write(&path, r#"{"username":"nick","notifications":false}"#).unwrap();
+        assert_eq!(Settings::load(&path).zoom, 100);
+
+        let mut settings = Settings::load(&path);
+        settings.zoom = 125;
+        settings.save(&path).unwrap();
+        assert_eq!(Settings::load(&path).zoom, 125);
+    }
+
+    #[test]
+    fn zoom_moves_one_step_and_stops_at_the_limits() {
+        assert_eq!(zoom_in(100), 110);
+        assert_eq!(zoom_out(100), 90);
+        assert_eq!(zoom_in(200), 200);
+        assert_eq!(zoom_out(50), 50);
+        // A level between steps, from a hand-edited file, moves to the step beside it.
+        assert_eq!(zoom_in(130), 150);
+        assert_eq!(zoom_out(130), 125);
+        // Out of range, it comes back inside.
+        assert_eq!(zoom_in(10), 50);
+        assert_eq!(zoom_out(900), 200);
     }
 
     #[test]
