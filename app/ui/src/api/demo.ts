@@ -241,7 +241,11 @@ export function demoBridge(screen: string): Bridge {
     hostClose: async () => {},
     joinSession: async (_code, _server, terminal: TerminalSink, events: (event: ViewEvent) => void) => {
       setTimeout(() => {
-        events({ type: 'joined', viewerId: 2, agent: 'claude-code', timelineSupported: true, cols: 100, rows: 32 });
+        // ?cols=&rows= sets the host's terminal size, for trying how a viewer scales it.
+        const size = new URLSearchParams(location.search);
+        const cols = Number(size.get('cols')) || 100;
+        const rows = Number(size.get('rows')) || 32;
+        events({ type: 'joined', viewerId: 2, agent: 'claude-code', timelineSupported: true, cols, rows });
         events({ type: 'participants', participants: demoParticipants });
         events({ type: 'status', status: 'working' });
         for (const event of demoTimeline) events({ type: 'timeline', event });
