@@ -29,9 +29,12 @@ jobs:
       - uses: jdx/mise-action@v3
 
       # Also saved when a later step fails: otherwise every failing run starts cold.
+      # Saved from main only: PRs restore main's cache. Each OS's cache is 1.2-1.7 GB, so PR copies
+      # pushed the total past GitHub's 10 GB and got caches evicted, which made runs start cold.
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - run: just install
 
@@ -52,14 +55,3 @@ jobs:
             target/release/bundle/appimage/*.AppImage
             target/release/bundle/deb/*.deb
           if-no-files-found: error
-
-  # The flake builds SpecDeck from source (design decision 13); a dependency change that breaks
-  # the Nix build shows up here rather than for Nix users.
-  nix:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: cachix/install-nix-action@v31
-      - run: nix build .#default -L
-      - name: The binary starts
-        run: xvfb-run --auto-servernum timeout 15 ./result/bin/specdeck-app || [ $? -eq 124 ]

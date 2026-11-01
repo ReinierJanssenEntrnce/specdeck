@@ -67,7 +67,7 @@ See [`deploy/k8s/README.md`](deploy/k8s/README.md) for ports, secrets and the di
 ## CI
 
 [`ci.yml`](.github/workflows/ci.yml) runs `just check` and `just package` on macOS, Windows and Ubuntu, and fails when an installer is larger than 25 MB ([`scripts/check-installer-size.sh`](scripts/check-installer-size.sh)).
-It also builds the Nix flake.
+[`nix.yml`](.github/workflows/nix.yml) builds the Nix flake on every push to main, and on pull requests that change what the Nix build depends on (lockfiles, manifests, `nix/`). Rust caches are saved from main only; pull requests reuse them.
 
 ## Releases
 
