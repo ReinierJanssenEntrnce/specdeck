@@ -109,6 +109,13 @@ jobs:
             } >> "$GITHUB_ENV"
           fi
 
+      # The build step runs in Git Bash, whose Perl lacks modules OpenSSL's Configure needs; `just
+      # package` in CI runs in PowerShell, where the runner's Strawberry Perl comes first.
+      - name: Use Strawberry Perl for OpenSSL on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-Content $env:GITHUB_ENV "OPENSSL_SRC_PERL=$((Get-Command perl).Source)"
+
       - name: Set up signing on Windows
         if: runner.os == 'Windows'
         shell: pwsh

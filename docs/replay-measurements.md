@@ -28,8 +28,9 @@ The script reports the raw and zstd-compressed size, how long `@xterm/headless` 
 | Recording | Agent | Duration | Raw | zstd | xterm replay | Catch-up estimate |
 |---|---|---|---|---|---|---|
 | synthetic (20,000 redraws) | none | n/a | 1.88 MB | 0.06 MB | 70 ms | 0.1 s |
+| OpenSpec propose, revise, apply and archive of a small docs change (2026-11-01) | Claude Code | about 40 min | 0.76 MB | 0.07 MB | 40 ms at 54x63 | 0.1 s |
 
-Real sessions: not recorded yet.
+The second row is SpecDeck's own output log of the session, measured with the same script: the log holds the terminal output as recorded, with a few 4-byte resize records in between. One-hour sessions: not recorded yet.
 
 ## Conclusion
 
