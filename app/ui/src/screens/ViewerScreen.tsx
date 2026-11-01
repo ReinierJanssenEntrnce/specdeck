@@ -82,11 +82,13 @@ interface Props {
   view: View | null;
   onView: (view: View) => void;
   /** Back to the start screen; with the code and a message when the join did not work. */
-  onLeave: (retry?: { code: string; message: string }) => void;
+  onLeave: (retry?: { code: string; server?: string; message: string }) => void;
+  /** The sharing service of a join link the user agreed to join through; their own when unset. */
+  server?: string;
 }
 
 /** Watching someone else's session, read-only. */
-export function ViewerScreen({ code, view, onView, onLeave }: Props) {
+export function ViewerScreen({ code, server, view, onView, onLeave }: Props) {
   const bridge = useBridge();
   const [asking, setAsking] = useState(view === null);
   const shown = view ?? DEVELOPER_VIEW;
@@ -99,8 +101,8 @@ export function ViewerScreen({ code, view, onView, onLeave }: Props) {
     if (joined.current) return;
     joined.current = true;
     bridge
-      .joinSession(code, (data) => workspace.current?.terminalData(data), dispatch)
-      .catch((error) => onLeave({ code, message: errorMessage(error) }));
+      .joinSession(code, server ?? null, (data) => workspace.current?.terminalData(data), dispatch)
+      .catch((error) => onLeave({ code, server, message: errorMessage(error) }));
     // Joins once per screen; leaving is explicit or happens when the window closes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -129,7 +131,7 @@ export function ViewerScreen({ code, view, onView, onLeave }: Props) {
               Back
             </button>
             {ending.retry && (
-              <button className="btn primary" onClick={() => onLeave({ code, message: ending.title })}>
+              <button className="btn primary" onClick={() => onLeave({ code, server, message: ending.title })}>
                 Try again
               </button>
             )}

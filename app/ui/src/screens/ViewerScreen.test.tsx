@@ -14,7 +14,7 @@ let emit: (event: ViewEvent) => void = () => {};
 
 function setup(view: View | null = DEVELOPER_VIEW) {
   const bridge = fakeBridge('viewer');
-  bridge.joinSession = vi.fn(async (_code, _terminal, events) => {
+  bridge.joinSession = vi.fn(async (_code, _server, _terminal, events) => {
     emit = events;
   });
   const onLeave = vi.fn();
@@ -66,7 +66,7 @@ describe('how a viewer follows the session', () => {
 describe('viewer screen', () => {
   it('shows that it is joining, then the host session read-only', () => {
     const { bridge } = setup();
-    expect(bridge.joinSession).toHaveBeenCalledWith('7K2M9QXH4TPA', expect.any(Function), expect.any(Function));
+    expect(bridge.joinSession).toHaveBeenCalledWith('7K2M9QXH4TPA', null, expect.any(Function), expect.any(Function));
     expect(screen.getByText('Joining the session…')).toBeInTheDocument();
     join();
     expect(screen.queryByText('Joining the session…')).not.toBeInTheDocument();

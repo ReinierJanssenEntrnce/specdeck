@@ -1,0 +1,57 @@
+---
+title: How the sharing service works
+description: What the signalling service and the TURN relay do, and what they can see.
+---
+
+SpecDeck sends a session straight from the host to each viewer. The **sharing service** only helps them find each other. It is two programs:
+
+- The **signalling service** (`specdeck-signalling`) matches viewers to hosts by invite code and passes on the messages that set up the connection. It also hands out short-lived credentials for the relay. Apps reach it over a WebSocket, `wss://<domain>/signal`.
+- The **TURN relay** ([coturn](https://github.com/coturn/coturn)) forwards the session's traffic when host and viewer cannot reach each other directly, for example behind strict company firewalls. It uses UDP only.
+
+```
+   host app                                      viewer app
+      |                                              |
+      |-- wss://specdeck.example.com/signal ---------|   who is who (invite code),
+      |          signalling service                  |   connection setup
+      |                                              |
+      |<============ direct, encrypted =============>|   the session itself
+      |                                              |
+      |<==== or through turn.example.com:3478 ======>|   when direct does not work
+                    TURN relay (UDP)
+```
+
+## What the service can see
+
+Sessions are end-to-end encrypted between host and viewers, and every frame is signed by the host. Neither the signalling service nor the relay can read or change a session. The signalling service never sees invite codes either: apps send it a room id derived from the code, and sign the connection setup with a key that never leaves the apps, so the service cannot put itself in between.
+
+They do see:
+
+- the network addresses of hosts and viewers;
+- that a session exists, and how many people join it.
+
+That is why SpecDeck asks before it joins through a service other than your own (see [Through another sharing service](/specdeck/guide/join/#through-another-sharing-service)).
+
+## Why run your own
+
+SpecDeck releases come with a built-in sharing service. Run your own when your team wants to decide where that service runs and who operates it, or when your network only allows certain servers.
+
+Rooms live in memory: run **one** signalling service. Restarting it ends the matching of new viewers until it is back; sessions that are already connected keep running.
+
+## What you need
+
+- A server with a public IPv4 address on its own network interface, such as a small VPS. A few hundred MB of memory is plenty.
+- Two DNS names pointing at it, for example `specdeck.example.com` (signalling) and `turn.example.com` (TURN).
+- These ports reachable from the internet:
+
+| Port | For |
+|---|---|
+| 80/TCP, 443/TCP | The signalling service through a TLS proxy (80 only for the certificate) |
+| 3478/UDP | TURN |
+| A UDP range, for example 49160-49259 | TURN relay ports; each relayed viewer uses about two |
+
+Then choose how to deploy:
+
+- [Docker Compose](/specdeck/self-host/docker-compose/) on one server: the quickest way.
+- [Kubernetes](/specdeck/self-host/kubernetes/) with the manifests in the repository.
+
+And [connect the apps](/specdeck/self-host/connect-apps/) to it.

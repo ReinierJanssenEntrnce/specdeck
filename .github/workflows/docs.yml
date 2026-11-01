@@ -1,0 +1,53 @@
+name: Docs
+
+# Builds the documentation site (docs/site) on pull requests, and publishes it to GitHub Pages
+# from main. Pages must be set to deploy from GitHub Actions (Settings > Pages > Source).
+on:
+  push:
+    branches: [main]
+    paths: ['docs/site/**', '.github/workflows/docs.yml']
+  pull_request:
+    paths: ['docs/site/**', '.github/workflows/docs.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Starlight's "last updated" dates come from the git history.
+          fetch-depth: 0
+
+      # Node and pnpm pinned in mise.toml.
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: node pnpm
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: docs/site
+
+      - run: pnpm build
+        working-directory: docs/site
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs/site/dist
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

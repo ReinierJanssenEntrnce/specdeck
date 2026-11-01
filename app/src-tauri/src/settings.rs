@@ -1,5 +1,5 @@
 //! What the app remembers between runs: the user's name, recent folders, last used agent,
-//! whether to show notifications and how the user follows sessions.
+//! whether to show notifications, how the user follows sessions and their sharing service.
 //! Stored as JSON in the app's config directory.
 
 use std::path::{Path, PathBuf};
@@ -20,6 +20,8 @@ pub struct Settings {
     pub notifications: bool,
     /// How the user follows sessions; `None` until they answered the first-join question.
     pub view: Option<View>,
+    /// The sharing service as a normalized URL; `None` for the one built into the app.
+    pub sharing_service: Option<String>,
 }
 
 /// How a participant follows a session (`viewer-views` design decision 4).
@@ -47,6 +49,7 @@ impl Default for Settings {
             last_agent: None,
             notifications: true,
             view: None,
+            sharing_service: None,
         }
     }
 }
@@ -173,6 +176,22 @@ mod tests {
         assert!(Settings::load(&path).notifications);
         std::fs::write(&path, br#"{"notifications":false}"#).unwrap();
         assert!(!Settings::load(&path).notifications);
+    }
+
+    #[test]
+    fn the_sharing_service_is_built_in_until_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        // Settings saved before the option existed.
+        std::fs::write(&path, br#"{"username":"nick","notifications":false}"#).unwrap();
+        let mut settings = Settings::load(&path);
+        assert_eq!(settings.sharing_service, None);
+        assert_eq!(settings.username.as_deref(), Some("nick"));
+        assert!(!settings.notifications);
+
+        settings.sharing_service = Some("wss://specdeck.example.com/signal".into());
+        settings.save(&path).unwrap();
+        assert_eq!(Settings::load(&path), settings);
     }
 
     #[test]

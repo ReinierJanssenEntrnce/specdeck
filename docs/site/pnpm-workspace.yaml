@@ -1,0 +1,14 @@
+# The documentation site is its own workspace with its own lockfile, so its dependencies stay out
+# of the app's (and out of the pnpm dependency hash in nix/package.nix).
+packages:
+  - .
+# As in the app's workspace: skip versions published less than a day ago (in minutes).
+minimumReleaseAge: 1440
+allowBuilds:
+  esbuild: true
+  sharp: true
+# A local install through a registry without publish times missed that i18next 26.6.0
+# was less than a day old and CI refused the lockfile. Remove once 26.6.0 is older than a day
+# (after 2026-11-01 23:20 UTC).
+overrides:
+  i18next: 26.5.12

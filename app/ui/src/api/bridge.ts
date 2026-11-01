@@ -3,7 +3,7 @@
 
 import type { MenuCommand } from '../menu/menu';
 import { createContext, useContext } from 'react';
-import type { AgentId, HostEvent, JoinLink, Profile, View, ViewEvent } from './types';
+import type { AgentId, HostEvent, JoinLink, Profile, ServiceCheck, View, ViewEvent } from './types';
 
 /** Receives terminal data as the binary stream described in src/terminal/stream.ts. */
 export type TerminalSink = (data: ArrayBuffer) => void;
@@ -13,6 +13,9 @@ export interface Bridge {
   setUsername(username: string): Promise<Profile>;
   setNotifications(enabled: boolean): Promise<Profile>;
   setView(view: View): Promise<Profile>;
+  /** A domain or URL; empty for the built-in service. Fails for what is not a service. */
+  setSharingService(service: string): Promise<Profile>;
+  checkSharingService(service: string): Promise<ServiceCheck>;
   removeRecentFolder(path: string): Promise<Profile>;
   /** Opens the system folder picker; null when cancelled. */
   chooseFolder(): Promise<string | null>;
@@ -25,10 +28,13 @@ export interface Bridge {
   hostRemoveViewer(viewerId: number): Promise<void>;
   hostSetViewerLimit(limit: number): Promise<void>;
   hostClose(): Promise<void>;
-  joinSession(code: string, terminal: TerminalSink, events: (event: ViewEvent) => void): Promise<void>;
+  /** Joins through `server`, from a link the user agreed to, or their own service when null. */
+  joinSession(code: string, server: string | null, terminal: TerminalSink, events: (event: ViewEvent) => void): Promise<void>;
   leaveSession(): Promise<void>;
   /** The join link that opened the app or came in since, once; null when there is none. */
   takeJoinLink(): Promise<JoinLink | null>;
+  /** Reads a link pasted into the start screen. */
+  readJoinLink(link: string): Promise<JoinLink>;
   copyText(text: string): Promise<void>;
   /** Tells the app the start screen can be used; scripts/measure-footprint times this. */
   startScreenShown(): Promise<void>;

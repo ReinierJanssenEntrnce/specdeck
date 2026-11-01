@@ -3,14 +3,15 @@ import { Folder, FolderOpen, LogIn, X } from 'lucide-react';
 import { errorMessage, useBridge } from '../api/bridge';
 import type { AgentId, AgentInfo, Profile } from '../api/types';
 import { initials } from '../components/PeoplePanel';
-import { formatCode, isCompleteCode } from '../model/code';
+import { formatCode, isCompleteCode, isJoinLink } from '../model/code';
 import type { MenuCommand } from '../menu/menu';
 
 interface Props {
   profile: Profile;
   onProfile: (profile: Profile) => void;
   onHosting: () => void;
-  onJoin: (code: string) => void;
+  /** With the pasted join link, which may name another sharing service. */
+  onJoin: (code: string, link?: string) => void;
   /** A code to show in the join field, for example after a failed join. */
   initialCode?: string;
   /** A message from a join that did not work. */
@@ -274,8 +275,10 @@ function JoinCard({
   error,
   command,
   onCommandDone,
-}: { onJoin: (code: string) => void; initialCode: string; error?: string } & CommandProps) {
+}: { onJoin: (code: string, link?: string) => void; initialCode: string; error?: string } & CommandProps) {
   const [code, setCode] = useState(formatCode(initialCode));
+  // The field shows only the code; the link it came from is kept for its sharing service.
+  const [link, setLink] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
   // File > Join a Session…
   useEffect(() => {
@@ -295,7 +298,9 @@ function JoinCard({
         style={{ display: 'grid', gap: 10 }}
         onSubmit={(event) => {
           event.preventDefault();
-          if (complete) onJoin(code);
+          if (!complete) return;
+          if (link && formatCode(link) === code) onJoin(code, link.trim());
+          else onJoin(code);
         }}
       >
         <label htmlFor="invite-code" className="section-label">
@@ -312,7 +317,9 @@ function JoinCard({
           onChange={(event) => setCode(formatCode(event.target.value))}
           onPaste={(event) => {
             event.preventDefault();
-            setCode(formatCode(event.clipboardData.getData('text')));
+            const text = event.clipboardData.getData('text');
+            setCode(formatCode(text));
+            setLink(isJoinLink(text) ? text : null);
           }}
           aria-describedby="code-hint"
           aria-invalid={error ? true : undefined}

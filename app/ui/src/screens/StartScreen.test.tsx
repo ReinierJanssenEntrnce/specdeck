@@ -103,11 +103,25 @@ describe('start screen', () => {
   });
 
   it('takes a pasted join link', async () => {
-    setup();
+    const { onJoin } = setup();
     const field = screen.getByLabelText('Invite code');
     await userEvent.click(field);
-    await userEvent.paste('specdeck://join/7k2m-9qxh-4tpa');
+    const link = 'specdeck://join/7k2m-9qxh-4tpa?server=wss%3A%2F%2Fspecdeck.example.com%2Fsignal';
+    await userEvent.paste(link);
     expect(field).toHaveValue('7K2M-9QXH-4TPA');
+    // The link goes along, for the sharing service it names.
+    await userEvent.click(screen.getByRole('button', { name: 'Join' }));
+    expect(onJoin).toHaveBeenCalledWith('7K2M-9QXH-4TPA', link);
+  });
+
+  it('forgets the pasted link when another code is typed', async () => {
+    const { onJoin } = setup();
+    const field = screen.getByLabelText('Invite code');
+    await userEvent.click(field);
+    await userEvent.paste('specdeck://join/7k2m-9qxh-4tpa?server=wss%3A%2F%2Fspecdeck.example.com%2Fsignal');
+    await userEvent.clear(field);
+    await userEvent.type(field, 'AAAABBBBCCCC{Enter}');
+    expect(onJoin).toHaveBeenCalledWith('AAAA-BBBB-CCCC');
   });
 
   it('shows why the last join did not work', () => {

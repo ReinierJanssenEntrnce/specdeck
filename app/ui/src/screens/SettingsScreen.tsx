@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { errorMessage, useBridge } from '../api/bridge';
-import type { Profile } from '../api/types';
+import type { Profile, ServiceCheck } from '../api/types';
+import { serviceName } from '../model/code';
 
 /** The settings window: changes apply at once, as is usual for app settings. */
 export function SettingsScreen() {
@@ -16,6 +17,11 @@ export function SettingsScreen() {
       setName(p.username ?? '');
     });
   }, [bridge]);
+  // A session started or ended, which decides whether the sharing service can change.
+  useEffect(
+    () => bridge.onMenu((command) => command.id === 'profile-changed' && void bridge.getProfile().then(setProfile)),
+    [bridge],
+  );
 
   if (!profile) return <div className="settings" aria-busy="true" />;
 
@@ -82,6 +88,82 @@ export function SettingsScreen() {
           </span>
         </div>
       </div>
+      <SharingService profile={profile} onProfile={setProfile} />
     </main>
+  );
+}
+
+type Status = { kind: 'idle' } | { kind: 'error'; message: string } | { kind: 'checking' } | { kind: 'checked'; check: ServiceCheck };
+
+/**
+ * The sharing service sessions use (`configurable-sharing-service`): empty for the built-in one.
+ * Saving checks whether it answers, and saves either way.
+ */
+function SharingService({ profile, onProfile }: { profile: Profile; onProfile: (profile: Profile) => void }) {
+  const bridge = useBridge();
+  const [value, setValue] = useState(profile.sharingService ?? '');
+  const [status, setStatus] = useState<Status>({ kind: 'idle' });
+  const locked = profile.inSession || profile.serviceOverridden;
+
+  const save = async (event?: FormEvent) => {
+    event?.preventDefault();
+    if (locked || value.trim() === (profile.sharingService ?? '')) return;
+    let saved: Profile;
+    try {
+      saved = await bridge.setSharingService(value);
+    } catch (e) {
+      return setStatus({ kind: 'error', message: errorMessage(e) });
+    }
+    onProfile(saved);
+    setValue(saved.sharingService ?? '');
+    setStatus({ kind: 'checking' });
+    setStatus({ kind: 'checked', check: await bridge.checkSharingService(saved.effectiveService) });
+  };
+
+  const name = serviceName(profile.effectiveService);
+  const unencrypted = profile.effectiveService.startsWith('ws://') ? ' Not encrypted.' : '';
+  const hint = profile.serviceOverridden
+    ? `Set to ${name} by SPECDECK_SIGNALLING_URL when SpecDeck started.`
+    : profile.inSession
+      ? 'Applies to the next session you start or join.'
+      : status.kind === 'checking'
+        ? `Checking ${name}…`
+        : status.kind === 'checked' && status.check.reachable
+          ? `Saved. ${name} can be reached.${unencrypted}`
+          : status.kind === 'checked'
+            ? `Saved, but ${name} cannot be reached. ${status.check.problem ?? ''}`
+            : `Leave empty for the built-in service. If your team runs its own, enter its domain, such as specdeck.example.com.${unencrypted}`;
+
+  return (
+    <form className="row" onSubmit={save}>
+      <label htmlFor="settings-service">Sharing service</label>
+      <div>
+        <input
+          id="settings-service"
+          className="field"
+          placeholder={serviceName(profile.builtInService)}
+          autoComplete="off"
+          spellCheck={false}
+          disabled={locked}
+          value={value}
+          onChange={(event) => {
+            setValue(event.target.value);
+            setStatus({ kind: 'idle' });
+          }}
+          onBlur={() => void save()}
+          aria-describedby="settings-service-hint"
+          aria-invalid={status.kind === 'error' ? true : undefined}
+        />
+        <span id="settings-service-hint" className="field-hint" aria-live="polite">
+          {status.kind === 'error' ? (
+            <span className="error-text" role="alert">
+              {status.message}
+            </span>
+          ) : (
+            hint
+          )}
+        </span>
+      </div>
+    </form>
   );
 }

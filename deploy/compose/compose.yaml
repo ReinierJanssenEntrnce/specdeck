@@ -1,0 +1,81 @@
+# SpecDeck's sharing service on one server: the signalling service behind Caddy, which gets the
+# TLS certificate, and coturn as the TURN relay. Copy .env.example to .env, fill it in, then run
+# `docker compose up -d --build`. Guide: https://nickhartjes.github.io/specdeck/self-host/docker-compose/
+name: specdeck
+
+services:
+  signalling:
+    build:
+      context: ../..
+      dockerfile: docker/signalling.Dockerfile
+    image: specdeck-signalling:local
+    restart: unless-stopped
+    environment:
+      SPECDECK_LISTEN: 0.0.0.0:8080
+      # Caddy sits in front and puts the client's address in X-Forwarded-For, which the rate
+      # limits use.
+      SPECDECK_TRUSTED_PROXIES: "1"
+      SPECDECK_TURN_SECRET: ${TURN_SECRET:?Set TURN_SECRET in .env}
+      SPECDECK_TURN_URLS: turn:${TURN_DOMAIN:?Set TURN_DOMAIN in .env}:3478?transport=udp
+      # A relayed session refreshes its allocation with these credentials: cover a long day.
+      SPECDECK_TURN_TTL_SECONDS: "43200"
+      RUST_LOG: info
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+    environment:
+      SPECDECK_DOMAIN: ${SPECDECK_DOMAIN:?Set SPECDECK_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [signalling]
+
+  coturn:
+    image: coturn/coturn:4.7
+    restart: unless-stopped
+    # TURN hands out the server's own address and relay ports, so it uses the host's network
+    # rather than a published port per relay port.
+    network_mode: host
+    command:
+      - --log-file=stdout
+      - --listening-port=3478
+      - --min-port=${TURN_MIN_PORT:-49160}
+      - --max-port=${TURN_MAX_PORT:-49259}
+      - --external-ip=${TURN_EXTERNAL_IP:?Set TURN_EXTERNAL_IP in .env}
+      - --realm=specdeck
+      # Credentials come from the signalling service (TURN REST API scheme).
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET}
+      - --fingerprint
+      - --pidfile=/var/lib/coturn/turnserver.pid
+      - --no-cli
+      # The app reaches TURN over UDP only (libjuice has no TURN over TCP or TLS).
+      - --no-tcp
+      - --no-tls
+      - --no-dtls
+      - --no-tcp-relay
+      - --no-multicast-peers
+      # Never relay into private networks: otherwise TURN credentials would give access to the
+      # server's own services and its local network.
+      - --denied-peer-ip=0.0.0.0-0.255.255.255
+      - --denied-peer-ip=127.0.0.0-127.255.255.255
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+      - --denied-peer-ip=169.254.0.0-169.254.255.255
+      - --denied-peer-ip=100.64.0.0-100.127.255.255
+    read_only: true
+    tmpfs: [/var/lib/coturn]
+    security_opt: [no-new-privileges:true]
+
+volumes:
+  caddy-data:
+  caddy-config:

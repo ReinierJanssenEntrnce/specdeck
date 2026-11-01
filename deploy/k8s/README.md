@@ -60,7 +60,7 @@ just local-down    # remove the deployment
 
 The overlay differs from `base` in a few places:
 
-- Namespace `specdeck1-local` and TURN on node port **3480**, so it runs next to SpecDeck 0.x's local deployment (namespace `specdeck-local`, ports 3478 and 49160-49179).
+- Namespace `specdeck1-local` and TURN on node port **3480**, so it does not clash with another TURN server on 3478.
 - Apps reach TURN at the node's address, for example `192.168.64.2:3480`. On macOS, [`scripts/local-kubectl.sh`](../../scripts/local-kubectl.sh) talks to the API server through the port Colima forwards to localhost, because macOS's Local Network privacy blocks most programs from reaching the VM's address.
 - Both test peers are relayed through the one coturn, so relay traffic stays inside the pod: coturn advertises the pod's address and the relay ports (51000-51999) are not exposed.
 - No ingress: the signalling service is reached with a port-forward, so `SPECDECK_TRUSTED_PROXIES` is `0`.

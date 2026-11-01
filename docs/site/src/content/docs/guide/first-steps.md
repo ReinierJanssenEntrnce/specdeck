@@ -1,0 +1,34 @@
+---
+title: First steps
+description: What you need, and setting your name.
+---
+
+SpecDeck lets one person (the **host**) run a coding agent, or just a terminal, on their computer while teammates (the **viewers**) follow along from anywhere. Viewers see the terminal and, for Claude Code, a timeline of every prompt, answer, tool call and file change. Each person scrolls and searches at their own pace.
+
+Viewers are read-only. Only the host types into the agent, and the agent runs on the host's own login.
+
+## What you need
+
+**Everyone** needs [SpecDeck](/specdeck/install/) for macOS, Windows or Linux, and an internet connection. SpecDeck connects through your team's sharing service, so no VPN is needed. It uses UDP; on networks that block UDP entirely (some company networks), joining does not work and SpecDeck says so.
+
+**The host** can share a coding agent, installed and logged in, or a plain terminal:
+
+| Choice | What viewers see |
+|---|---|
+| Claude Code (`claude`) | The terminal, plus the timeline, file diffs and the list of touched files |
+| OpenCode (`opencode`) | The terminal |
+| omp (`omp`) | The terminal |
+| Terminal | Your own shell: your login shell on macOS and Linux, PowerShell on Windows. Nothing to install |
+
+Check an agent by running it in a terminal: it should start without asking you to log in. On **Windows**, Claude Code also needs **Git for Windows** (Git Bash).
+
+## Set your name
+
+The first time you open SpecDeck, it asks what others should call you. To change it later, select **Change** next to your name on the start screen, or open [Settings](/specdeck/guide/settings/).
+
+Two people may use the same name; the second is shown as `Anna (2)`. Names are labels, not logins: anyone with the invite code can join under any name.
+
+## Next
+
+- [Host a session](/specdeck/guide/host/) to share your agent or terminal.
+- [Join a session](/specdeck/guide/join/) with the code or link a host sent you.

@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { Bridge } from './bridge';
 import type { MenuCommand } from '../menu/menu';
-import type { HostEvent, JoinLink, Profile, ViewEvent } from './types';
+import type { HostEvent, JoinLink, Profile, ServiceCheck, ViewEvent } from './types';
 
 function channel<T>(handler: (message: T) => void): Channel<T> {
   const ch = new Channel<T>();
@@ -32,6 +32,8 @@ export const tauriBridge: Bridge = {
   setUsername: (username) => invoke<Profile>('set_username', { username }),
   setNotifications: (enabled) => invoke<Profile>('set_notifications', { enabled }),
   setView: (view) => invoke<Profile>('set_view', { view }),
+  setSharingService: (service) => invoke<Profile>('set_sharing_service', { service }),
+  checkSharingService: (service) => invoke<ServiceCheck>('check_sharing_service', { service }),
   removeRecentFolder: (path) => invoke<Profile>('remove_recent_folder', { path }),
   chooseFolder: async () => {
     const folder = await open({ directory: true, multiple: false, title: 'Choose the folder the agent works in' });
@@ -47,10 +49,11 @@ export const tauriBridge: Bridge = {
   hostRemoveViewer: (viewerId) => invoke('host_remove_viewer', { viewerId }),
   hostSetViewerLimit: (limit) => invoke('host_set_viewer_limit', { limit }),
   hostClose: () => invoke('host_close'),
-  joinSession: (code, terminal, events) =>
-    invoke('join_session', { code, terminal: bytesChannel(terminal), events: channel<ViewEvent>(events) }),
+  joinSession: (code, server, terminal, events) =>
+    invoke('join_session', { code, server, terminal: bytesChannel(terminal), events: channel<ViewEvent>(events) }),
   leaveSession: () => invoke('leave_session'),
   takeJoinLink: () => invoke<JoinLink | null>('take_join_link'),
+  readJoinLink: (link) => invoke<JoinLink>('read_join_link', { link }),
   copyText: (text) => navigator.clipboard.writeText(text),
   startScreenShown: () => invoke('start_screen_shown'),
   onMenu: (handler) => {

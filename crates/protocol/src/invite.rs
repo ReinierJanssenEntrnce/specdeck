@@ -73,16 +73,58 @@ impl InviteCode {
         InviteKeys { room_id: hex(&room), auth_key }
     }
 
-    /// A `specdeck://join/<code>` link, as secret as the code itself.
-    pub fn join_link(&self) -> String {
-        format!("specdeck://join/{self}")
+    /// A `specdeck://join/<code>?server=<url>` link, as secret as the code itself. It names the
+    /// host's sharing service, so a viewer on another service can still join
+    /// (`configurable-sharing-service` design decision 4).
+    pub fn join_link(&self, service: &str) -> String {
+        format!("specdeck://join/{self}?server={}", percent_encode(service))
     }
 
-    /// Reads the code from a join link.
+    /// Reads the code from a join link, ignoring anything after it.
     pub fn from_join_link(link: &str) -> Result<Self, InvalidCode> {
-        let code = link.strip_prefix("specdeck://join/").ok_or(InvalidCode)?;
-        Self::parse(code.trim_end_matches('/'))
+        Self::parse_join_link(link).map(|(code, _)| code)
     }
+
+    /// Reads the code and the sharing service from a join link. A link without a service, or
+    /// with one that cannot be read, still gives its code.
+    pub fn parse_join_link(link: &str) -> Result<(Self, Option<String>), InvalidCode> {
+        let rest = link.strip_prefix("specdeck://join/").ok_or(InvalidCode)?;
+        let (code, query) = rest.split_once('?').unwrap_or((rest, ""));
+        let code = Self::parse(code.trim_end_matches('/'))?;
+        let service = query
+            .split('&')
+            .find_map(|pair| pair.strip_prefix("server="))
+            .and_then(percent_decode)
+            .and_then(|service| crate::service::normalize(&service).ok());
+        Ok((code, service))
+    }
+}
+
+/// Percent-encodes everything but RFC 3986's unreserved characters.
+fn percent_encode(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+fn percent_decode(text: &str) -> Option<String> {
+    let mut bytes = Vec::with_capacity(text.len());
+    let mut input = text.bytes();
+    while let Some(byte) = input.next() {
+        if byte == b'%' {
+            let hex = [input.next()?, input.next()?];
+            bytes.push(u8::from_str_radix(std::str::from_utf8(&hex).ok()?, 16).ok()?);
+        } else {
+            bytes.push(byte);
+        }
+    }
+    String::from_utf8(bytes).ok()
 }
 
 /// Shown grouped in fours: `7K2M-9QXH-4TPA`.
@@ -162,11 +204,48 @@ mod tests {
     #[test]
     fn join_links_round_trip() {
         let code = InviteCode::parse("7K2M-9QXH-4TPA").unwrap();
-        assert_eq!(code.join_link(), "specdeck://join/7K2M-9QXH-4TPA");
-        assert_eq!(InviteCode::from_join_link(&code.join_link()), Ok(code.clone()));
-        assert_eq!(InviteCode::from_join_link("specdeck://join/7k2m9qxh4tpa/"), Ok(code));
+        let service = "wss://specdeck.example.com/signal";
+        let link = code.join_link(service);
+        assert_eq!(
+            link,
+            "specdeck://join/7K2M-9QXH-4TPA?server=wss%3A%2F%2Fspecdeck.example.com%2Fsignal"
+        );
+        assert_eq!(InviteCode::parse_join_link(&link), Ok((code.clone(), Some(service.into()))));
+        assert_eq!(InviteCode::from_join_link(&link), Ok(code.clone()));
+        let local = code.join_link("ws://127.0.0.1:18081/signal");
+        assert_eq!(
+            InviteCode::parse_join_link(&local),
+            Ok((code.clone(), Some("ws://127.0.0.1:18081/signal".into())))
+        );
         assert_eq!(
             InviteCode::from_join_link("https://example.com/7K2M-9QXH-4TPA"),
+            Err(InvalidCode)
+        );
+    }
+
+    #[test]
+    fn links_without_a_readable_service_still_give_the_code() {
+        let code = InviteCode::parse("7K2M-9QXH-4TPA").unwrap();
+        for link in [
+            // From before links named the service.
+            "specdeck://join/7K2M-9QXH-4TPA",
+            "specdeck://join/7k2m9qxh4tpa/",
+            "specdeck://join/7K2M-9QXH-4TPA/?",
+            "specdeck://join/7K2M-9QXH-4TPA?other=1",
+            "specdeck://join/7K2M-9QXH-4TPA?server=",
+            "specdeck://join/7K2M-9QXH-4TPA?server=%zz",
+            "specdeck://join/7K2M-9QXH-4TPA?server=%E2%28",
+            "specdeck://join/7K2M-9QXH-4TPA?server=https%3A%2F%2Fexample.com",
+        ] {
+            assert_eq!(InviteCode::parse_join_link(link), Ok((code.clone(), None)), "{link}");
+        }
+        // A service the link names in short form is read as the full URL.
+        assert_eq!(
+            InviteCode::parse_join_link("specdeck://join/7K2M-9QXH-4TPA?x=1&server=example.com"),
+            Ok((code, Some("wss://example.com/signal".into())))
+        );
+        assert_eq!(
+            InviteCode::parse_join_link("specdeck://join/7K2M-9QXH-4TP?server=example.com"),
             Err(InvalidCode)
         );
     }

@@ -76,6 +76,14 @@ describe('accessibility', () => {
   it('settings window', async () => {
     renderWith(fakeBridge(), <SettingsScreen />);
     await screen.findByLabelText('Your name');
+    await screen.findByLabelText('Sharing service');
+    expect(await violations()).toEqual([]);
+  });
+
+  it('question before joining through another sharing service', async () => {
+    const link = { code: '7K2M-9QXH-4TPA', server: 'wss://specdeck.example.com/signal', serverName: 'specdeck.example.com' };
+    app('start', { takeJoinLink: vi.fn(async () => link) });
+    await screen.findByRole('alertdialog', { name: 'Join through specdeck.example.com?' });
     expect(await violations()).toEqual([]);
   });
 
@@ -85,7 +93,7 @@ describe('accessibility', () => {
     for (let i = 0; i < 30 && document.activeElement !== screen.getByLabelText('Invite code'); i++) await userEvent.tab();
     expect(screen.getByLabelText('Invite code')).toHaveFocus();
     await userEvent.keyboard('7K2M9QXH4TPA{Enter}');
-    await waitFor(() => expect(bridge.joinSession).toHaveBeenCalledWith('7K2M-9QXH-4TPA', expect.any(Function), expect.any(Function)));
+    await waitFor(() => expect(bridge.joinSession).toHaveBeenCalledWith('7K2M-9QXH-4TPA', null, expect.any(Function), expect.any(Function)));
   });
 
   it('F6 moves between the toolbar, the terminal and the side panel', async () => {

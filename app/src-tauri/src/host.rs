@@ -40,6 +40,8 @@ pub enum HostEvent {
         timeline_supported: bool,
         sharing: SharingState,
         code: Option<String>,
+        /// The sharing service the session uses, which join links name.
+        service: String,
         participants: Vec<Participant>,
         status: AgentStatus,
         viewer_limit: u8,
@@ -166,6 +168,8 @@ impl Notice {
 pub struct HostRuntime {
     pub agent: AgentId,
     pub folder: PathBuf,
+    /// The sharing service, fixed for the session.
+    service: String,
     session: HostSession,
     sharing: Sharing,
     ui: Arc<Mutex<Ui>>,
@@ -202,7 +206,7 @@ impl HostRuntime {
         let (sharing, mut sharing_events) = Sharing::start(
             session.view(),
             SharingConfig {
-                signalling_url: options.signalling_url,
+                signalling_url: options.signalling_url.clone(),
                 username: options.username,
                 peer: options.peer,
                 viewer_limit: MAX_VIEWERS,
@@ -299,6 +303,7 @@ impl HostRuntime {
         Ok(Self {
             agent: options.agent,
             folder: options.folder,
+            service: options.signalling_url,
             session,
             sharing,
             ui,
@@ -318,6 +323,7 @@ impl HostRuntime {
                 timeline_supported: self.agent.has_timeline(),
                 sharing: ui.sharing,
                 code: ui.code.clone(),
+                service: self.service.clone(),
                 participants: ui.participants.clone(),
                 status: view.status(),
                 viewer_limit: ui.viewer_limit,

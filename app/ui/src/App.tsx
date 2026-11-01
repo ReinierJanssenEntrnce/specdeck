@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react';
 import { errorMessage, useBridge } from './api/bridge';
-import type { Profile, View } from './api/types';
+import type { JoinLink, Profile, View } from './api/types';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { JoinThroughDialog } from './components/JoinThroughDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { dispatchMenu, useMenu, type MenuCommand } from './menu/menu';
+import { formatCode } from './model/code';
 import { HostScreen } from './screens/HostScreen';
 import { StartScreen } from './screens/StartScreen';
 import { ViewerScreen } from './screens/ViewerScreen';
 
+// `server`: the sharing service of a join link the user agreed to join through.
 type Screen =
-  | { kind: 'start'; code?: string; joinError?: string }
+  | { kind: 'start'; code?: string; server?: string; joinError?: string }
   | { kind: 'host' }
-  | { kind: 'viewer'; code: string };
+  | { kind: 'viewer'; code: string; server?: string };
 
 export function App() {
   const bridge = useBridge();
@@ -20,7 +23,9 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   // A host or join command for the start screen, and one waiting for the viewer to confirm leaving.
   const [startCommand, setStartCommand] = useState<MenuCommand | null>(null);
-  const [leaveFor, setLeaveFor] = useState<MenuCommand | null>(null);
+  const [leaveFor, setLeaveFor] = useState<(MenuCommand & { link?: JoinLink }) | null>(null);
+  // A join link through another sharing service, waiting for the user to agree.
+  const [joinThrough, setJoinThrough] = useState<JoinLink | null>(null);
   const [shortcuts, setShortcuts] = useState(false);
 
   const setView = (view: View) => void bridge.setView(view).then(setProfile);
@@ -34,6 +39,12 @@ export function App() {
     });
 
   useEffect(() => bridge.onMenu(dispatchMenu), [bridge]);
+  // Joins from a link, asking first when it names another sharing service.
+  const joinFromLink = (link: JoinLink) => {
+    if (!link.code) return;
+    if (link.server) setJoinThrough(link);
+    else setScreen({ kind: 'viewer', code: link.code });
+  };
   // A join link that opened the app, or came in while it runs.
   const takeJoinLink = async () => {
     const link = await bridge.takeJoinLink();
@@ -43,10 +54,21 @@ export function App() {
       return;
     }
     if (!link.code) return;
-    if (screen.kind === 'start') setScreen({ kind: 'viewer', code: link.code });
-    else if (screen.kind === 'viewer') setLeaveFor({ id: 'join-link', path: link.code });
+    if (screen.kind === 'start') joinFromLink(link);
+    else if (screen.kind === 'viewer') setLeaveFor({ id: 'join-link', path: link.code, link });
     // A hosted session says to end it first.
     else dispatchMenu({ id: 'join' });
+  };
+  // The join field on the start screen: a code, or a pasted link that may name a service.
+  const join = (code: string, pasted?: string) => {
+    if (pasted) {
+      void bridge.readJoinLink(pasted).then((link) => (link.error ? setScreen({ kind: 'start', joinError: link.error }) : joinFromLink(link)));
+    } else if (screen.kind === 'start' && screen.server && screen.code && formatCode(screen.code) === formatCode(code)) {
+      // Trying again after a failed join keeps the service the user agreed to.
+      setScreen({ kind: 'viewer', code, server: screen.server });
+    } else {
+      setScreen({ kind: 'viewer', code });
+    }
   };
 
   useMenu((command) => {
@@ -99,11 +121,14 @@ export function App() {
       )}
       {screen.kind === 'viewer' && (
         <ViewerScreen
-          key={screen.code}
+          key={`${screen.code} ${screen.server ?? ''}`}
           code={screen.code}
+          server={screen.server}
           view={profile.view}
           onView={setView}
-          onLeave={(retry) => setScreen(retry ? { kind: 'start', code: retry.code, joinError: retry.message } : { kind: 'start' })}
+          onLeave={(retry) =>
+            setScreen(retry ? { kind: 'start', code: retry.code, server: retry.server, joinError: retry.message } : { kind: 'start' })
+          }
         />
       )}
       {/* Without a toolbar the top of the window is where it is dragged (macOS title bar). */}
@@ -116,7 +141,7 @@ export function App() {
             setScreen({ kind: 'host' });
             void refresh();
           }}
-          onJoin={(code) => setScreen({ kind: 'viewer', code })}
+          onJoin={join}
           initialCode={screen.code}
           joinError={screen.joinError}
           command={startCommand}
@@ -130,7 +155,10 @@ export function App() {
           onCancel={() => setLeaveFor(null)}
           onConfirm={() => {
             void bridge.leaveSession();
-            if (leaveFor.id === 'join-link' && leaveFor.path) {
+            if (leaveFor.link) {
+              setScreen({ kind: 'start' });
+              joinFromLink(leaveFor.link);
+            } else if (leaveFor.id === 'join-link' && leaveFor.path) {
               setScreen({ kind: 'viewer', code: leaveFor.path });
             } else {
               setScreen({ kind: 'start' });
@@ -141,6 +169,22 @@ export function App() {
         >
           <p>You stop watching. You can join again with the invite code while the session runs.</p>
         </ConfirmDialog>
+      )}
+      {joinThrough?.code && joinThrough.server && (
+        <JoinThroughDialog
+          serverName={joinThrough.serverName ?? joinThrough.server}
+          canKeep={!profile.serviceOverridden}
+          onCancel={() => setJoinThrough(null)}
+          onJoin={async (keep) => {
+            const { code, server } = joinThrough as { code: string; server: string };
+            setJoinThrough(null);
+            if (keep) {
+              // Joining does not depend on saving the setting.
+              await bridge.setSharingService(server).then(setProfile, () => {});
+            }
+            setScreen({ kind: 'viewer', code, server });
+          }}
+        />
       )}
       {shortcuts && <ShortcutsDialog onClose={() => setShortcuts(false)} />}
     </>

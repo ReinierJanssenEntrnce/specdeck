@@ -19,6 +19,17 @@ export interface RecentFolder {
 export interface JoinLink {
   code?: string;
   error?: string;
+  /** The link's sharing service, only when it differs from the user's own. */
+  server?: string;
+  /** Its host name, for asking whether to join through it. */
+  serverName?: string;
+}
+
+/** Whether a sharing service answered the check in Settings. */
+export interface ServiceCheck {
+  reachable: boolean;
+  /** Why not, in plain words. */
+  problem?: string;
 }
 
 export type Steps = 'summary' | 'details';
@@ -51,6 +62,15 @@ export interface Profile {
   /** The window has the platform's material behind it (macOS vibrancy, Windows Mica). */
   translucent: boolean;
   platform: string;
+  /** The user's sharing service setting as a URL; null for the built-in service. */
+  sharingService: string | null;
+  /** The service a session started now uses. */
+  effectiveService: string;
+  builtInService: string;
+  /** SPECDECK_SIGNALLING_URL decides the service, so the setting has no effect. */
+  serviceOverridden: boolean;
+  /** Hosting or viewing a session; the service cannot change meanwhile. */
+  inSession: boolean;
 }
 
 export interface Participant {
@@ -126,6 +146,8 @@ export type HostEvent =
       timelineSupported: boolean;
       sharing: SharingState;
       code: string | null;
+      /** The sharing service the session uses, which join links name. */
+      service: string;
       participants: Participant[];
       status: AgentStatus;
       viewerLimit: number;

@@ -29,6 +29,14 @@ fmt:
 package:
     pnpm tauri build
 
+# Start the documentation site with live reload (http://localhost:4321/specdeck/)
+docs:
+    cd docs/site && pnpm install && pnpm dev
+
+# Build the documentation site (docs/site/dist)
+docs-build:
+    cd docs/site && pnpm install --frozen-lockfile && pnpm build
+
 # Deploy signalling and coturn to Colima's local Kubernetes (deploy/k8s/local); needs `colima start --kubernetes`
 local-up:
     #!/usr/bin/env bash
