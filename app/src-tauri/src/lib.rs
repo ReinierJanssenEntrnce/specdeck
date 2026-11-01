@@ -1,6 +1,7 @@
 mod host;
 mod menu;
 mod notify;
+mod services;
 mod settings;
 mod terminal;
 mod tray;
@@ -16,6 +17,7 @@ use specdeck_core::environment::{Environment, PROBE_TIMEOUT};
 use specdeck_core::mirror::Colors;
 use specdeck_core::peer::PeerConfig;
 use specdeck_protocol::invite::InviteCode;
+use specdeck_protocol::service;
 use specdeck_protocol::{AgentId, AgentStatus};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::menu::MenuEvent;
@@ -29,18 +31,15 @@ use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_window_state::StateFlags;
 
 use crate::host::{HostEvent, HostNotice, HostRuntime, SharingState, StartOptions, Summary};
+use crate::services::{ServiceCheck, Services};
 use crate::settings::{Settings, View};
 use crate::viewer::{EndReason, ViewEvent, ViewerRuntime};
-
-/// Signalling service used when `SPECDECK_SIGNALLING_URL` is not set at build or run time: the
-/// local stack from `just local-up`, reached through `just local-dev`'s port-forward.
-const DEFAULT_SIGNALLING_URL: &str = "ws://127.0.0.1:18081/signal";
 
 struct AppState {
     settings_path: PathBuf,
     settings: Mutex<Settings>,
     data_dir: PathBuf,
-    signalling_url: String,
+    services: Services,
     /// The user's login-shell environment, read once in the background at start.
     environment: Arc<OnceLock<Environment>>,
     host: Mutex<Option<HostRuntime>>,
@@ -54,6 +53,15 @@ struct AppState {
 impl AppState {
     fn environment(&self) -> Environment {
         self.environment.get().cloned().unwrap_or_else(|| Environment::detect(PROBE_TIMEOUT))
+    }
+
+    /// The sharing service a session started now uses.
+    fn sharing_service(&self) -> String {
+        self.services.effective(self.settings.lock().unwrap().sharing_service.as_deref())
+    }
+
+    fn in_session(&self) -> bool {
+        self.host.lock().unwrap().is_some() || self.viewer.lock().unwrap().is_some()
     }
 
     fn save(&self, settings: &Settings) {
@@ -93,6 +101,15 @@ struct Profile {
     /// The window has a material behind it, so the UI may let it show through.
     translucent: bool,
     platform: &'static str,
+    /// The user's sharing service setting; `None` for the built-in one.
+    sharing_service: Option<String>,
+    /// The service a session started now would use.
+    effective_service: String,
+    built_in_service: String,
+    /// `SPECDECK_SIGNALLING_URL` decides the service, so the setting has no effect.
+    service_overridden: bool,
+    /// Hosting or viewing; the sharing service cannot change meanwhile.
+    in_session: bool,
 }
 
 /// The agents to choose from, in display order: the coding agents, then Terminal.
@@ -111,6 +128,10 @@ fn agent_infos(env: &Environment) -> Vec<AgentInfo> {
 fn profile(state: &AppState) -> Profile {
     let settings = state.settings.lock().unwrap().clone();
     let agents = agent_infos(&state.environment());
+    // Each takes the session locks itself, so not inside the struct expression below, where the
+    // guards would live until its end.
+    let hosting = state.host.lock().unwrap().is_some();
+    let in_session = state.in_session();
     Profile {
         username: settings.username.clone(),
         recent_folders: settings
@@ -126,11 +147,16 @@ fn profile(state: &AppState) -> Profile {
             .collect(),
         last_agent: settings.last_agent,
         agents,
-        hosting: state.host.lock().unwrap().is_some(),
+        hosting,
         notifications: settings.notifications,
         view: settings.view,
         translucent: state.translucent.load(Ordering::Relaxed),
         platform: std::env::consts::OS,
+        effective_service: state.services.effective(settings.sharing_service.as_deref()),
+        sharing_service: settings.sharing_service,
+        built_in_service: state.services.built_in.clone(),
+        service_overridden: state.services.overridden.is_some(),
+        in_session,
     }
 }
 
@@ -184,6 +210,36 @@ async fn set_view(
     Ok(profile(&state))
 }
 
+/// Sets the sharing service, from a domain or URL; empty means the built-in one. Takes effect for
+/// the next session.
+#[tauri::command]
+async fn set_sharing_service(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    service: String,
+) -> Result<Profile, String> {
+    if state.in_session() {
+        return Err("The sharing service can be changed when no session runs.".into());
+    }
+    let service = match service.trim() {
+        "" => None,
+        input => Some(service::normalize(input).map_err(|error| error.to_string())?),
+    };
+    {
+        let mut settings = state.settings.lock().unwrap();
+        settings.sharing_service = service;
+        state.save(&settings);
+    }
+    settings_changed(&app);
+    Ok(profile(&state))
+}
+
+/// Whether a sharing service, as a normalized URL, can be reached.
+#[tauri::command]
+async fn check_sharing_service(service: String) -> Result<ServiceCheck, String> {
+    Ok(services::check(&service).await)
+}
+
 /// Shows a notification, if the user wants them and the window is not in front.
 fn notify(app: &AppHandle, title: &str, body: &str) {
     let enabled = app.state::<AppState>().settings.lock().unwrap().notifications;
@@ -225,7 +281,7 @@ async fn start_hosting(
         rows,
         username,
         data_dir: state.data_dir.clone(),
-        signalling_url: state.signalling_url.clone(),
+        signalling_url: state.sharing_service(),
         peer: PeerConfig::default(),
     };
     // The menu-bar or tray icon shows the session from the start, and follows it.
@@ -269,6 +325,7 @@ async fn start_hosting(
         }
     };
     *state.host.lock().unwrap() = Some(runtime);
+    session_changed(&app);
     let mut settings = state.settings.lock().unwrap();
     settings.add_recent(folder);
     settings.last_agent = Some(agent);
@@ -343,6 +400,7 @@ fn end_session(app: &AppHandle) {
     }
     tray::remove(app);
     refresh_menu(app);
+    session_changed(app);
 }
 
 #[tauri::command]
@@ -350,6 +408,7 @@ async fn join_session(
     app: AppHandle,
     state: State<'_, AppState>,
     code: String,
+    server: Option<String>,
     terminal: Channel<InvokeResponseBody>,
     events: Channel<ViewEvent>,
 ) -> Result<(), String> {
@@ -357,36 +416,46 @@ async fn join_session(
         .or_else(|_| InviteCode::parse(&code))
         .map_err(|_| "That is not an invite code. It looks like 7K2M-9QXH-4TPA.".to_string())?;
     let username = state.settings.lock().unwrap().username.clone().ok_or("Set your name first.")?;
+    // A service from a join link the viewer agreed to join through; reconnects stay on it.
+    let service = match server {
+        Some(server) => service::normalize(&server).map_err(|error| error.to_string())?,
+        None => state.sharing_service(),
+    };
+    let notified = app.clone();
     let runtime = ViewerRuntime::join(
         code,
         username,
-        state.signalling_url.clone(),
+        service,
         PeerConfig::default(),
         terminal,
         events,
         move |reason| match reason {
             EndReason::Closed => notify(
-                &app,
+                &notified,
                 "The host ended the session",
                 "You can keep reading what was shared until you leave.",
             ),
-            EndReason::Removed => {
-                notify(&app, "The host removed you", "You are no longer connected to the session.")
-            }
+            EndReason::Removed => notify(
+                &notified,
+                "The host removed you",
+                "You are no longer connected to the session.",
+            ),
             _ => {}
         },
     );
     if let Some(previous) = state.viewer.lock().unwrap().replace(runtime) {
         previous.leave();
     }
+    session_changed(&app);
     Ok(())
 }
 
 #[tauri::command]
-async fn leave_session(state: State<'_, AppState>) -> Result<(), String> {
+async fn leave_session(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     if let Some(viewer) = state.viewer.lock().unwrap().take() {
         viewer.leave();
     }
+    session_changed(&app);
     Ok(())
 }
 
@@ -438,27 +507,53 @@ fn test_profile() -> Option<String> {
 }
 
 /// A join link the window has not handled yet: the code, or why the link does not work.
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct JoinLink {
     #[serde(skip_serializing_if = "Option::is_none")]
     code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// The link's sharing service, only when it differs from the viewer's, so the window asks
+    /// before joining through it (`configurable-sharing-service` design decision 5).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    server: Option<String>,
+    /// The service's host, for that question.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    server_name: Option<String>,
+}
+
+/// Reads a join link for a viewer whose sharing service is `own`.
+fn read_link(link: &str, own: &str) -> JoinLink {
+    match InviteCode::parse_join_link(link.trim()) {
+        Ok((code, server)) => {
+            let server = server.filter(|server| server != own);
+            JoinLink {
+                code: Some(code.to_string()),
+                error: None,
+                server_name: server.as_deref().map(|url| service::display_name(url).to_owned()),
+                server,
+            }
+        }
+        Err(_) => JoinLink {
+            error: Some("That link is not a SpecDeck invite. Ask the host for a new one.".into()),
+            ..JoinLink::default()
+        },
+    }
+}
+
+/// A join link pasted into the start screen.
+#[tauri::command]
+async fn read_join_link(state: State<'_, AppState>, link: String) -> Result<JoinLink, String> {
+    Ok(read_link(&link, &state.sharing_service()))
 }
 
 /// A `specdeck://` link was opened: keep it for the window and bring the window to the front.
 /// The window takes it with `take_join_link`, at start or when told about it.
 fn open_link(app: &AppHandle, link: &str) {
-    let parsed = InviteCode::from_join_link(link.trim());
-    let pending = match parsed {
-        Ok(code) => JoinLink { code: Some(code.to_string()), error: None },
-        Err(_) => JoinLink {
-            code: None,
-            error: Some("That link is not a SpecDeck invite. Ask the host for a new one.".into()),
-        },
-    };
-    *app.state::<AppState>().join_link.lock().unwrap() = Some(pending);
+    let state = app.state::<AppState>();
+    let pending = read_link(link, &state.sharing_service());
+    *state.join_link.lock().unwrap() = Some(pending);
     open_main_window(app);
     let _ = app.emit_to("main", "menu", MenuCommand { id: "join-link".into(), path: None });
 }
@@ -656,7 +751,7 @@ fn open_settings_window(app: &AppHandle) {
         WebviewUrl::App("index.html?window=settings".into()),
     )
     .title(title)
-    .inner_size(460.0, 300.0)
+    .inner_size(460.0, 420.0)
     .resizable(false)
     .minimizable(false)
     .maximizable(false)
@@ -667,6 +762,12 @@ fn open_settings_window(app: &AppHandle) {
 /// Tells the main window that the settings changed, so it shows the new name.
 fn settings_changed(app: &AppHandle) {
     let _ = app.emit_to("main", "menu", MenuCommand { id: "profile-changed".into(), path: None });
+}
+
+/// A session started or ended: Settings shows whether the sharing service can be changed.
+fn session_changed(app: &AppHandle) {
+    let _ =
+        app.emit_to("settings", "menu", MenuCommand { id: "profile-changed".into(), path: None });
 }
 
 fn window_title() -> String {
@@ -715,15 +816,11 @@ pub fn run() {
             std::thread::spawn(move || {
                 let _ = background.set(Environment::detect(PROBE_TIMEOUT));
             });
-            let signalling_url = std::env::var("SPECDECK_SIGNALLING_URL")
-                .ok()
-                .or_else(|| option_env!("SPECDECK_SIGNALLING_URL").map(str::to_owned))
-                .unwrap_or_else(|| DEFAULT_SIGNALLING_URL.to_owned());
             app.manage(AppState {
                 settings: Mutex::new(Settings::load(&settings_path)),
                 settings_path,
                 data_dir,
-                signalling_url,
+                services: Services::from_environment(),
                 environment,
                 host: Mutex::new(None),
                 viewer: Mutex::new(None),
@@ -772,6 +869,9 @@ pub fn run() {
             set_username,
             set_notifications,
             set_view,
+            set_sharing_service,
+            check_sharing_service,
+            read_join_link,
             remove_recent_folder,
             start_hosting,
             host_attach,
@@ -809,13 +909,8 @@ mod tests {
 
     #[test]
     fn terminal_is_offered_last_and_always_installed() {
-        // No agents on this PATH; the shell is found anyway.
         let dir = tempfile::tempdir().unwrap();
-        let mut env: Environment = [("PATH", dir.path())].into_iter().collect();
-        if cfg!(windows) {
-            env.set("SystemRoot", std::env::var_os("SystemRoot").unwrap_or_default());
-        }
-        let agents = agent_infos(&env);
+        let agents = agent_infos(&empty_environment(dir.path()));
         let terminal = agents.last().unwrap();
         assert_eq!(
             (terminal.id, terminal.name, terminal.installed),
@@ -840,6 +935,80 @@ mod tests {
         assert_eq!(left, ["notes.txt"]);
         // A folder that does not exist yet is fine.
         remove_leftover_session_files(&dir.path().join("missing"));
+    }
+
+    /// No agents on this PATH; the shell is found anyway.
+    fn empty_environment(dir: &Path) -> Environment {
+        let mut env: Environment = [("PATH", dir)].into_iter().collect();
+        if cfg!(windows) {
+            env.set("SystemRoot", std::env::var_os("SystemRoot").unwrap_or_default());
+        }
+        env
+    }
+
+    fn state(dir: &Path, overridden: Option<&str>, setting: Option<&str>) -> AppState {
+        let environment = Arc::new(OnceLock::new());
+        let _ = environment.set(empty_environment(dir));
+        let settings = Settings { sharing_service: setting.map(Into::into), ..Settings::default() };
+        AppState {
+            settings_path: PathBuf::from("settings.json"),
+            settings: Mutex::new(settings),
+            data_dir: PathBuf::from("sessions"),
+            services: Services {
+                built_in: "wss://built-in.example.com/signal".into(),
+                overridden: overridden.map(Into::into),
+            },
+            environment,
+            host: Mutex::new(None),
+            viewer: Mutex::new(None),
+            translucent: AtomicBool::new(false),
+            join_link: Mutex::new(None),
+        }
+    }
+
+    #[test]
+    fn the_profile_says_which_sharing_service_sessions_use() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = |overridden, setting| state(dir.path(), overridden, setting);
+        let built_in = profile(&state(None, None));
+        assert_eq!(built_in.sharing_service, None);
+        assert_eq!(built_in.effective_service, "wss://built-in.example.com/signal");
+        assert_eq!(built_in.built_in_service, "wss://built-in.example.com/signal");
+        assert!(!built_in.service_overridden);
+        assert!(!built_in.in_session);
+
+        let own = profile(&state(None, Some("wss://own.example.com/signal")));
+        assert_eq!(own.sharing_service.as_deref(), Some("wss://own.example.com/signal"));
+        assert_eq!(own.effective_service, "wss://own.example.com/signal");
+
+        let overridden =
+            profile(&state(Some("ws://127.0.0.1:1/signal"), Some("wss://own.example.com/signal")));
+        assert_eq!(overridden.effective_service, "ws://127.0.0.1:1/signal");
+        assert!(overridden.service_overridden);
+    }
+
+    #[test]
+    fn a_join_link_names_its_service_only_when_it_differs() {
+        let own = "wss://own.example.com/signal";
+        let same = read_link(
+            "specdeck://join/7K2M-9QXH-4TPA?server=wss%3A%2F%2Fown.example.com%2Fsignal",
+            own,
+        );
+        assert_eq!(same, JoinLink { code: Some("7K2M-9QXH-4TPA".into()), ..JoinLink::default() });
+
+        let other = read_link(
+            "specdeck://join/7k2m9qxh4tpa?server=wss%3A%2F%2Fother.example.com%2Fsignal",
+            own,
+        );
+        assert_eq!(other.code.as_deref(), Some("7K2M-9QXH-4TPA"));
+        assert_eq!(other.server.as_deref(), Some("wss://other.example.com/signal"));
+        assert_eq!(other.server_name.as_deref(), Some("other.example.com"));
+
+        // Links from before services were named join through the viewer's own.
+        let old = read_link("specdeck://join/7K2M-9QXH-4TPA", own);
+        assert_eq!(old, JoinLink { code: Some("7K2M-9QXH-4TPA".into()), ..JoinLink::default() });
+
+        assert!(read_link("https://example.com/7K2M-9QXH-4TPA", own).error.is_some());
     }
 
     #[test]

@@ -3,6 +3,7 @@
 
 import type { Bridge, TerminalSink } from './bridge';
 import type { HostEvent, Participant, Profile, TimelineEvent, ViewEvent } from './types';
+import { formatCode } from '../model/code';
 
 const t0 = Date.UTC(2026, 9, 31, 13, 2);
 
@@ -25,6 +26,11 @@ export const demoProfile: Profile = {
   ],
   hosting: false,
   platform: 'macos',
+  sharingService: null,
+  effectiveService: 'wss://specdeck.hartj.es/signal',
+  builtInService: 'wss://specdeck.hartj.es/signal',
+  serviceOverridden: false,
+  inSession: false,
 };
 
 export const demoParticipants: Participant[] = [
@@ -164,6 +170,11 @@ export function demoBridge(screen: string): Bridge {
     setUsername: async (username) => ({ ...profile, username }),
     setNotifications: async (notifications) => ({ ...profile, notifications }),
     setView: async (view) => ({ ...profile, view }),
+    setSharingService: async (service) => {
+      const url = service.trim() ? `wss://${service.trim()}/signal` : null;
+      return { ...profile, sharingService: url, effectiveService: url ?? profile.builtInService };
+    },
+    checkSharingService: async () => ({ reachable: true }),
     removeRecentFolder: async (path) => ({ ...profile, recentFolders: profile.recentFolders.filter((f) => f.path !== path) }),
     chooseFolder: async () => '/Users/nick/projects/webshop',
     startHosting: async () => {},
@@ -175,6 +186,7 @@ export function demoBridge(screen: string): Bridge {
         timelineSupported: true,
         sharing: 'ready',
         code: '7K2M9QXH4TPA',
+        service: 'wss://specdeck.hartj.es/signal',
         participants: demoParticipants,
         status: 'working',
         viewerLimit: 20,
@@ -190,7 +202,7 @@ export function demoBridge(screen: string): Bridge {
     hostRemoveViewer: async () => {},
     hostSetViewerLimit: async () => {},
     hostClose: async () => {},
-    joinSession: async (_code, terminal: TerminalSink, events: (event: ViewEvent) => void) => {
+    joinSession: async (_code, _server, terminal: TerminalSink, events: (event: ViewEvent) => void) => {
       setTimeout(() => {
         events({ type: 'joined', viewerId: 2, agent: 'claude-code', timelineSupported: true, cols: 100, rows: 32 });
         events({ type: 'participants', participants: demoParticipants });
@@ -201,6 +213,7 @@ export function demoBridge(screen: string): Bridge {
     },
     leaveSession: async () => {},
     takeJoinLink: async () => null,
+    readJoinLink: async (link) => ({ code: formatCode(link) }),
     copyText: async () => {},
     startScreenShown: async () => {},
     onMenu: () => () => {},

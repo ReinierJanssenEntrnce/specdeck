@@ -71,6 +71,10 @@ If SpecDeck's sharing service cannot be reached, the session still runs on your 
 
 If you are watching another session, SpecDeck asks before it leaves that one. If a link does not work, SpecDeck says so on the start screen.
 
+A join link also names the host's sharing service. If it is not the one you use, for example because the host's team runs its own, SpecDeck asks **Join through …?** before it connects. **Join** uses that service for this session only; tick **Use this service from now on** to make it your sharing service in Settings. **Cancel** connects nowhere. The other service cannot read the session, but it sees your network address, so join only through links you trust. A code typed on its own always uses your own sharing service: when host and viewer use different services, share the link.
+
+SpecDeck 1.0 cannot open links from newer versions by clicking them. On 1.0, paste the link into **Join a session** instead, or update SpecDeck.
+
 The first time you join, SpecDeck asks how you want to follow sessions:
 
 - **Overview:** the conversation and the plan. You see what was asked, what the agent did in plain words, its answers, and the documents it wrote. The terminal is hidden.
@@ -154,6 +158,9 @@ Open **Settings** with **SpecDeck › Settings…** or **⌘,** on macOS, or **F
 |---|---|
 | Your name | The name others see in sessions you start or join from now on |
 | Show notifications | Turns all of SpecDeck's notifications on or off |
+| Sharing service | The service that connects hosts and viewers. Leave it empty for the one built into SpecDeck. If your team runs its own, enter its domain, such as `specdeck.example.com`, or its full address (`wss://…/signal`). SpecDeck checks whether it can be reached and saves it either way. It applies to the next session you start or join, so it cannot be changed during a session |
+
+Everyone on a team that runs its own sharing service sets it here, or joins once through a host's link and ticks **Use this service from now on**. When SpecDeck was started with `SPECDECK_SIGNALLING_URL` set, that address is used and the setting cannot be changed.
 
 ## The window
 

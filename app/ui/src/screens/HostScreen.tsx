@@ -20,6 +20,8 @@ interface State {
   timelineSupported: boolean;
   sharing: SharingState;
   code: string | null;
+  /** The sharing service, which join links name. */
+  service: string;
   participants: Participant[];
   status: AgentStatus;
   viewerLimit: number;
@@ -33,6 +35,7 @@ const initial: State = {
   timelineSupported: false,
   sharing: 'connecting',
   code: null,
+  service: '',
   participants: [],
   status: 'starting',
   viewerLimit: 20,
@@ -147,7 +150,7 @@ export function HostScreen({ view, onView, onEnded }: Props) {
           sharing={state.sharing}
           code={state.code}
           onCopyCode={() => state.code && copy(formatCode(state.code), 'Invite code copied')}
-          onCopyLink={() => state.code && copy(joinLink(state.code), 'Join link copied')}
+          onCopyLink={() => state.code && copy(joinLink(state.code, state.service), 'Join link copied')}
           onNewCode={() => bridge.hostNewCode()}
         />
         <button className="btn danger" onClick={() => setConfirmEnd(true)}>

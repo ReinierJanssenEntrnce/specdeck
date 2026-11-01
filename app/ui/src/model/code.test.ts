@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { codeCharacters, formatCode, isCompleteCode, joinLink } from './code';
+import { codeCharacters, formatCode, isCompleteCode, isJoinLink, joinLink, serviceName } from './code';
 
 describe('invite codes', () => {
   it('formats in groups of four as the user types', () => {
@@ -20,6 +20,15 @@ describe('invite codes', () => {
   it('takes the code from a pasted join link', () => {
     expect(formatCode('specdeck://join/7K2M-9QXH-4TPA')).toBe('7K2M-9QXH-4TPA');
     expect(isCompleteCode('Join me: specdeck://join/7k2m9qxh4tpa')).toBe(true);
+    // The sharing service after the code is not part of it.
+    expect(formatCode('specdeck://join/7K2M-9QXH-4TPA?server=wss%3A%2F%2Fexample.com%2Fsignal')).toBe('7K2M-9QXH-4TPA');
+    expect(isJoinLink(' specdeck://join/7K2M-9QXH-4TPA')).toBe(true);
+    expect(isJoinLink('7K2M-9QXH-4TPA')).toBe(false);
+  });
+
+  it('names a sharing service by its host', () => {
+    expect(serviceName('wss://specdeck.example.com/signal')).toBe('specdeck.example.com');
+    expect(serviceName('ws://127.0.0.1:18081/signal')).toBe('127.0.0.1:18081');
   });
 
   it('knows when a code is complete', () => {
@@ -28,6 +37,8 @@ describe('invite codes', () => {
   });
 
   it('makes join links', () => {
-    expect(joinLink('7k2m9qxh4tpa')).toBe('specdeck://join/7K2M-9QXH-4TPA');
+    expect(joinLink('7k2m9qxh4tpa', 'wss://specdeck.example.com/signal')).toBe(
+      'specdeck://join/7K2M-9QXH-4TPA?server=wss%3A%2F%2Fspecdeck.example.com%2Fsignal',
+    );
   });
 });

@@ -54,7 +54,8 @@ describe('host screen', () => {
     expect(bridge.copyText).toHaveBeenCalledWith('7K2M-9QXH-4TPA');
     expect(await screen.findByText('Invite code copied')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Copy join link' }));
-    expect(bridge.copyText).toHaveBeenCalledWith('specdeck://join/7K2M-9QXH-4TPA');
+    // The link names the host's sharing service, so viewers on another service can join.
+    expect(bridge.copyText).toHaveBeenCalledWith('specdeck://join/7K2M-9QXH-4TPA?server=wss%3A%2F%2Fspecdeck.hartj.es%2Fsignal');
   });
 
   it('makes a new code after confirming', async () => {
@@ -115,6 +116,7 @@ describe('host screen', () => {
         timelineSupported: false,
         sharing: 'ready',
         code: '7K2M9QXH4TPA',
+        service: 'wss://specdeck.hartj.es/signal',
         participants: demoParticipants,
         status: 'unknown',
         viewerLimit: 20,

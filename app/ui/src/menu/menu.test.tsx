@@ -109,7 +109,7 @@ describe('menu commands', () => {
   it('joins straight away when a join link opened the app', async () => {
     const bridge = fakeBridge('start', { takeJoinLink: vi.fn(async () => ({ code: '7K2M-9QXH-4TPA' })) });
     renderWith(bridge, <App />);
-    await waitFor(() => expect(bridge.joinSession).toHaveBeenCalledWith('7K2M-9QXH-4TPA', expect.any(Function), expect.any(Function)));
+    await waitFor(() => expect(bridge.joinSession).toHaveBeenCalledWith('7K2M-9QXH-4TPA', null, expect.any(Function), expect.any(Function)));
   });
 
   it('says when a join link does not work', async () => {
@@ -126,7 +126,7 @@ describe('menu commands', () => {
     const dialog = await screen.findByRole('alertdialog', { name: 'Leave this session?' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Leave' }));
     expect(bridge.leaveSession).toHaveBeenCalled();
-    await waitFor(() => expect(bridge.joinSession).toHaveBeenLastCalledWith('AAAA-BBBB-CCCC', expect.any(Function), expect.any(Function)));
+    await waitFor(() => expect(bridge.joinSession).toHaveBeenLastCalledWith('AAAA-BBBB-CCCC', null, expect.any(Function), expect.any(Function)));
   });
 
   it('keeps a hosted session when a join link comes in', async () => {
@@ -134,5 +134,57 @@ describe('menu commands', () => {
     act(() => menu({ id: 'join-link' }));
     expect(await screen.findByText('End this session before you host or join another.')).toBeInTheDocument();
     expect(bridge.joinSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('join links through another sharing service', () => {
+  const other = { code: '7K2M-9QXH-4TPA', server: 'wss://specdeck.example.com/signal', serverName: 'specdeck.example.com' };
+
+  it('joins through it once when the user agrees', async () => {
+    const bridge = fakeBridge('start', { takeJoinLink: vi.fn(async () => other) });
+    renderWith(bridge, <App />);
+    const dialog = await screen.findByRole('alertdialog', { name: 'Join through specdeck.example.com?' });
+    expect(within(dialog).getByRole('checkbox', { name: 'Use this service from now on' })).not.toBeChecked();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Join' }));
+    await waitFor(() => expect(bridge.joinSession).toHaveBeenCalledWith('7K2M-9QXH-4TPA', other.server, expect.any(Function), expect.any(Function)));
+    expect(bridge.setSharingService).not.toHaveBeenCalled();
+  });
+
+  it('keeps the service when the user chooses to', async () => {
+    const bridge = fakeBridge('start', { takeJoinLink: vi.fn(async () => other) });
+    renderWith(bridge, <App />);
+    const dialog = await screen.findByRole('alertdialog', { name: 'Join through specdeck.example.com?' });
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Use this service from now on' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Join' }));
+    await waitFor(() => expect(bridge.joinSession).toHaveBeenCalledWith('7K2M-9QXH-4TPA', other.server, expect.any(Function), expect.any(Function)));
+    expect(bridge.setSharingService).toHaveBeenCalledWith(other.server);
+  });
+
+  it('connects nowhere when the user cancels', async () => {
+    const bridge = fakeBridge('start', { takeJoinLink: vi.fn(async () => other) });
+    renderWith(bridge, <App />);
+    const dialog = await screen.findByRole('alertdialog', { name: 'Join through specdeck.example.com?' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(bridge.joinSession).not.toHaveBeenCalled();
+  });
+
+  it('does not offer to keep a service the environment overrides', async () => {
+    const base = fakeBridge();
+    const profile = { ...(await base.getProfile()), serviceOverridden: true };
+    const bridge = fakeBridge('start', { getProfile: vi.fn(async () => profile), takeJoinLink: vi.fn(async () => other) });
+    renderWith(bridge, <App />);
+    const dialog = await screen.findByRole('alertdialog', { name: 'Join through specdeck.example.com?' });
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('asks for a pasted link too', async () => {
+    const pasted = 'specdeck://join/7K2M-9QXH-4TPA?server=wss%3A%2F%2Fspecdeck.example.com%2Fsignal';
+    const bridge = await setup('start', { readJoinLink: vi.fn(async () => other) });
+    await userEvent.click(screen.getByLabelText('Invite code'));
+    await userEvent.paste(pasted);
+    await userEvent.click(screen.getByRole('button', { name: /Join/ }));
+    expect(bridge.readJoinLink).toHaveBeenCalledWith(pasted);
+    expect(await screen.findByRole('alertdialog', { name: 'Join through specdeck.example.com?' })).toBeInTheDocument();
   });
 });
