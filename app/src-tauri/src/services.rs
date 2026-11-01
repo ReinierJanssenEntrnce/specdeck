@@ -128,9 +128,20 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("ws://{}/signal", listener.local_addr().unwrap());
         tokio::spawn(async move {
-            use tokio::io::AsyncWriteExt;
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
             let (mut socket, _) = listener.accept().await.unwrap();
+            // Read the request first and wait for the client to close: on Windows, closing a
+            // socket with unread data resets the connection before the client reads the answer.
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 1024];
+            while !request.ends_with(b"\r\n\r\n") {
+                match socket.read(&mut buffer).await {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => request.extend_from_slice(&buffer[..n]),
+                }
+            }
             let _ = socket.write_all(b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\n\r\n").await;
+            let _ = socket.read(&mut buffer).await;
         });
         let result = check(&url).await;
         assert!(!result.reachable);
