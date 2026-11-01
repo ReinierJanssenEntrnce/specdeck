@@ -260,6 +260,9 @@ button { font: inherit; color: inherit; }
 .terminal-pane { position: relative; min-width: 0; min-height: 0; background: var(--terminal-bg); display: grid; }
 .terminal-host { min-height: 0; min-width: 0; padding: 8px 4px 4px 10px; overflow: hidden; }
 .terminal-host.fixed { overflow: auto; }
+/* xterm keeps its input field at the cursor, and does not move it when a viewer's text is scaled;
+   a viewer cannot type, so it stays at the edge rather than poke out of the pane. */
+.terminal-host.fixed .xterm-helper-textarea { left: 0 !important; }
 .terminal-host .xterm { height: 100%; }
 .terminal-host .xterm, .terminal-host .xterm-viewport, .terminal-host .xterm-screen { background: var(--terminal-bg) !important; }
 .terminal-host .xterm-viewport { scrollbar-width: thin; }

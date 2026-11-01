@@ -193,6 +193,8 @@ function terminalStream(): ArrayBuffer {
 
 export function demoBridge(screen: string): Bridge {
   const profile = { ...demoProfile, hosting: screen === 'host' };
+  // Like the engine, the demo sends each resize of the host's terminal back as a record.
+  let hostTerminal: TerminalSink | null = null;
   return {
     getProfile: async () => profile,
     setUsername: async (username) => ({ ...profile, username }),
@@ -207,6 +209,7 @@ export function demoBridge(screen: string): Bridge {
     chooseFolder: async () => '/Users/nick/projects/webshop',
     startHosting: async () => {},
     hostAttach: async (terminal: TerminalSink, events: (event: HostEvent) => void) => {
+      hostTerminal = terminal;
       events({
         type: 'snapshot',
         agent: 'claude-code',
@@ -224,7 +227,13 @@ export function demoBridge(screen: string): Bridge {
       setTimeout(() => terminal(terminalStream()), 50);
     },
     hostInput: async () => {},
-    hostResize: async () => {},
+    hostResize: async (cols, rows) => {
+      const record = new Uint8Array(5);
+      record[0] = 2;
+      new DataView(record.buffer).setUint16(1, cols);
+      new DataView(record.buffer).setUint16(3, rows);
+      setTimeout(() => hostTerminal?.(record.buffer), 40);
+    },
     hostSetColors: async () => {},
     hostNewCode: async () => {},
     hostRemoveViewer: async () => {},
@@ -232,7 +241,11 @@ export function demoBridge(screen: string): Bridge {
     hostClose: async () => {},
     joinSession: async (_code, _server, terminal: TerminalSink, events: (event: ViewEvent) => void) => {
       setTimeout(() => {
-        events({ type: 'joined', viewerId: 2, agent: 'claude-code', timelineSupported: true, cols: 100, rows: 32 });
+        // ?cols=&rows= sets the host's terminal size, for trying how a viewer scales it.
+        const size = new URLSearchParams(location.search);
+        const cols = Number(size.get('cols')) || 100;
+        const rows = Number(size.get('rows')) || 32;
+        events({ type: 'joined', viewerId: 2, agent: 'claude-code', timelineSupported: true, cols, rows });
         events({ type: 'participants', participants: demoParticipants });
         events({ type: 'status', status: 'working' });
         for (const event of demoTimeline) events({ type: 'timeline', event });

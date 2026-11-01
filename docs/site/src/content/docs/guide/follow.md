@@ -24,8 +24,8 @@ Claude Code sometimes stops to ask the host something. The timeline shows what w
 
 | When Claude | You see |
 |---|---|
-| Asks a question with options | *Asked: Which database? → Postgres*. Select it to see every option, with the host's choice marked, and anything the host typed or noted |
-| Proposes a plan | *Proposed a plan* while it waits, then *Plan approved* or *Plan rejected*. Select it to read the plan. A rejected plan is usually followed by a revised one |
+| Asks a question with options | *Asked: Which database? → Postgres*, shown open with every option, the host's choice marked, and anything the host typed or noted |
+| Proposes a plan | *Proposed a plan* while it waits, then *Plan approved* or *Plan rejected*, shown open with the plan. A rejected plan is usually followed by a revised one |
 | Needs permission to run a tool | The step is marked *Allowed by the host* or *Denied by the host*. A denial shows once the host types their next prompt |
 | Hands work to a helper | Select *Asked a helper: …* to read what the helper reported back, also when it worked in the background and finished later |
 | Updates its to-do list | Select *Updated its to-do list* to see the list, each item marked to do, in progress or done |

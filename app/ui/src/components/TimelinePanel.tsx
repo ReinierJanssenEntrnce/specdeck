@@ -7,7 +7,7 @@ import type { Steps } from '../api/types';
 import { DiffView } from './DiffView';
 import { formatTokens } from '../model/statusbar';
 import { Markdown } from './Markdown';
-import { interactionBody, PermissionBadge } from './HostInteractions';
+import { asksTheHost, interactionBody, PermissionBadge } from './HostInteractions';
 
 interface Props {
   model: TimelineModel;
@@ -175,7 +175,7 @@ function StepView({ step, onJump, onReadPlan }: { step: Step; onJump: (seq: numb
   const Icon = OUTCOME_ICON[step.outcome];
   const plan = step.plan;
   const details = (
-    <details className={`step ${step.outcome}`}>
+    <details className={`step ${step.outcome}`} open={step.tools.some(asksTheHost)}>
       <summary onClick={() => onJump(step.tools[0]!.outputSeq)}>
         <Icon className="status-icon" aria-hidden />
         <span className="what">{step.label}</span>
@@ -255,7 +255,7 @@ const STATUS_TEXT = { running: 'Running', succeeded: 'Done', failed: 'Failed', '
 function ToolView({ item, onJump }: { item: ToolItem; onJump: (seq: number) => void }) {
   const Icon = { running: Loader, succeeded: Check, failed: X, 'not-run': CircleSlash }[item.status];
   return (
-    <details className={`tool ${item.status}`} open={item.changes.length > 0}>
+    <details className={`tool ${item.status}`} open={item.changes.length > 0 || asksTheHost(item)}>
       <summary onClick={() => onJump(item.outputSeq)}>
         <Icon className="status-icon" aria-hidden />
         <span className="name">{item.toolName}</span>

@@ -16,6 +16,11 @@ interface Question {
   options: Option[];
 }
 
+/** Calls where the host decided something: shown opened, so the decision is seen without a click. */
+export function asksTheHost(item: ToolItem): boolean {
+  return item.toolName === 'AskUserQuestion' || item.toolName === 'ExitPlanMode';
+}
+
 /** A body for the call when it has a readable form; null to show its raw input. */
 export function interactionBody(item: ToolItem) {
   switch (item.toolName) {

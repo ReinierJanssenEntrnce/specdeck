@@ -34,7 +34,7 @@ export interface TerminalHandle {
 }
 
 interface Props {
-  /** The host's terminal fits its pane and takes input; a viewer's keeps the host's size. */
+  /** The host's terminal fits its pane and takes input; a viewer's keeps the host's size and scales its text to the pane. */
   mode: 'host' | 'viewer';
   onData?: (data: string) => void;
   onResize?: (cols: number, rows: number) => void;
@@ -56,6 +56,13 @@ const PALETTE_DARK = {
   black: '#1d2025', red: '#ff7b6b', green: '#5cc595', yellow: '#f0b14f', blue: '#8ea6e0', magenta: '#c49be8', cyan: '#5fc6d8', white: '#c9ced6',
   brightBlack: '#6f7682', brightRed: '#ff9a8d', brightGreen: '#7fd8aa', brightYellow: '#f7c977', brightBlue: '#adc0ee', brightMagenta: '#d7b6f2', brightCyan: '#86d8e6', brightWhite: '#f2f4f7',
 };
+
+const FONT_SIZE = 13;
+/** The range a viewer's text is scaled in to fit the host's terminal in its pane. */
+const MIN_VIEWER_FONT = 6;
+const MAX_VIEWER_FONT = 24;
+/** Room kept for the scrollbar beside a viewer's scaled terminal. */
+const SCROLLBAR_ROOM = 12;
 
 function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -91,7 +98,7 @@ export const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalV
       cursorBlink: props.mode === 'host',
       disableStdin: props.mode === 'viewer',
       fontFamily: cssVar('--mono') || 'Menlo, monospace',
-      fontSize: 13,
+      fontSize: FONT_SIZE,
       lineHeight: 1.15,
       scrollback: 100_000,
       theme: currentTheme(),
@@ -173,6 +180,30 @@ export const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalV
       });
       resizeObserver.observe(element);
       fitNow();
+    } else {
+      // A viewer's terminal keeps the host's columns and rows, so its text is scaled instead:
+      // the font grows or shrinks until the host's whole terminal fits the pane.
+      const screen = element.querySelector<HTMLElement>('.xterm-screen');
+      const scaleToPane = () => {
+        if (!screen) return;
+        const style = getComputedStyle(element);
+        const width = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - SCROLLBAR_ROOM;
+        const height = element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+        const drawn = screen.getBoundingClientRect();
+        if (width <= 0 || height <= 0 || !drawn.width || !drawn.height) return;
+        const current = term.options.fontSize ?? FONT_SIZE;
+        const wanted = current * Math.min(width / drawn.width, height / drawn.height);
+        const size = Math.min(MAX_VIEWER_FONT, Math.max(MIN_VIEWER_FONT, Math.floor(wanted * 4) / 4));
+        if (Math.abs(size - current) >= 0.25) term.options.fontSize = size;
+      };
+      let pending: number | undefined;
+      resizeObserver = new ResizeObserver(() => {
+        window.clearTimeout(pending);
+        pending = window.setTimeout(scaleToPane, 60);
+      });
+      // The pane changes with the window; the drawn terminal changes with the host's size.
+      resizeObserver.observe(element);
+      if (screen) resizeObserver.observe(screen);
     }
 
     const media = window.matchMedia?.('(prefers-color-scheme: dark)');

@@ -65,14 +65,20 @@ local-test: local-up
 local-dev: local-up
     #!/usr/bin/env bash
     set -euo pipefail
-    trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
-    scripts/local-kubectl.sh -n specdeck1-local port-forward svc/specdeck-signalling 18081:8080 >/dev/null &
+    # Each background job gets its own process group, so Ctrl+C stops the whole tree under it
+    # (tauri, vite, the apps), not just the job's first process. Background jobs then no longer
+    # get /dev/null as input by themselves, so each is given it: one that reads the terminal stops.
+    set -m
+    stop() { trap - EXIT INT TERM; for pgid in $(jobs -p); do kill -TERM -- -"$pgid" 2>/dev/null || true; done; }
+    trap stop EXIT
+    trap 'exit 130' INT TERM
+    scripts/local-kubectl.sh -n specdeck1-local port-forward svc/specdeck-signalling 18081:8080 >/dev/null </dev/null &
     until curl -sf http://127.0.0.1:18081/health >/dev/null; do sleep 0.25; done
     export SPECDECK_SIGNALLING_URL=ws://127.0.0.1:18081/signal
     mkdir -p .local-dev
-    SPECDECK_PROFILE=host pnpm tauri dev 2>&1 | tee .local-dev/host.log &
+    SPECDECK_PROFILE=host pnpm tauri dev </dev/null 2>&1 | tee .local-dev/host.log &
     # The viewer is a second instance of the same debug build, loading the host's dev server.
     until curl -sf http://localhost:5173 >/dev/null && pgrep -f target/debug/specdeck-app >/dev/null; do sleep 0.5; done
-    SPECDECK_PROFILE=viewer target/debug/specdeck-app 2>&1 | tee .local-dev/viewer.log &
+    SPECDECK_PROFILE=viewer target/debug/specdeck-app </dev/null 2>&1 | tee .local-dev/viewer.log &
     echo "SpecDeck (host) and SpecDeck (viewer) are starting. Close this with Ctrl+C."
     wait

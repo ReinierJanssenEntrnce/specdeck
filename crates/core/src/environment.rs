@@ -71,13 +71,23 @@ impl<K: Into<OsString>, V: Into<OsString>> FromIterator<(K, V)> for Environment 
 
 /// Runs `shell` as an interactive login shell and reads the environment it ends up with.
 fn probe_login_shell(shell: &Path, timeout: Duration) -> Option<Environment> {
-    let mut child = Command::new(shell)
+    let mut command = Command::new(shell);
+    command
         .args(["-l", "-i", "-c", &format!("printf '\\0{MARKER}\\0'; env -0")])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
+        .stderr(Stdio::null());
+    // In a session of its own the shell has no terminal. An interactive shell otherwise takes
+    // over the terminal the app was started from, as in development, and never gives it back:
+    // Ctrl+C there then reaches nobody.
+    #[cfg(unix)]
+    unsafe {
+        use std::os::unix::process::CommandExt;
+        command.pre_exec(|| {
+            if libc::setsid() == -1 { Err(std::io::Error::last_os_error()) } else { Ok(()) }
+        });
+    }
+    let mut child = command.spawn().ok()?;
 
     // Read on a separate thread so a large environment cannot fill the pipe and block the shell.
     let mut stdout = child.stdout.take()?;
@@ -143,6 +153,21 @@ mod tests {
         let shell = fake_shell(dir.path(), "export PATH=/from/profile:$PATH; eval \"$4\"");
         let env = probe_login_shell(&shell, PROBE_TIMEOUT).unwrap();
         assert!(env.get("PATH").unwrap().to_string_lossy().starts_with("/from/profile:"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_login_shell_runs_in_a_session_of_its_own() {
+        // A session leader leads its own process group; without one it would share the test's.
+        let dir = tempfile::tempdir().unwrap();
+        let shell = fake_shell(
+            dir.path(),
+            "export PATH=/usr/bin:/bin LEADS=$(ps -o pgid= -p $$ | tr -d ' ')-$$; eval \"$4\"",
+        );
+        let env = probe_login_shell(&shell, PROBE_TIMEOUT).unwrap();
+        let leads = env.get("LEADS").unwrap().into_string().unwrap();
+        let (group, pid) = leads.split_once('-').unwrap();
+        assert_eq!(group, pid);
     }
 
     #[cfg(unix)]
