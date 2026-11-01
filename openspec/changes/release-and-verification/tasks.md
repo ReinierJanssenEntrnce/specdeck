@@ -15,6 +15,7 @@ Carried over from the archived `native-shared-session-mvp` (its task number in b
 
 - [ ] 2.1 [2.4] Record three real one-hour Claude Code sessions and report raw and zstd-compressed log size and xterm.js replay time in `docs/replay-measurements.md`; state whether the 5 s catch-up target holds and, if not, raise it with the user
 - [ ] 2.2 [8.2] Add `scripts/measure-footprint` and record cold start and one-hour viewing memory on the reference machines; verify the targets (1.5 s, 250 MB) are met or report the gap
+  - 2026-11-01: the script is added and results go in `docs/footprint-measurements.md`. On an M5 Pro (not a reference machine): start 1.08 s first, 0.95 s median; one hour viewing a terminal session peaked at 205 MB. Still to do: the three reference machines, a cold start after a reboot, and a Claude Code session with the timeline
 
 ## 3. Manual verification
 

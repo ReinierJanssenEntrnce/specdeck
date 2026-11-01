@@ -11,7 +11,8 @@
 #       10 s for `minutes` (default 60) and reports the peak.
 #
 # The app binary defaults to the built bundle: SpecDeck.app on macOS, target/release on Linux.
-# Both modes use their own profile, so they do not touch your settings or a running SpecDeck.
+# Quit SpecDeck first: a release build always uses your own profile and runs once per user, so a
+# second start would only bring the running one to the front.
 # Memory is the app's process plus its web engine's: on macOS the WebKit processes that appeared
 # after the app started (so start no other WebKit app meanwhile), counted as their physical
 # footprint as Activity Monitor shows it; on Linux the app's process tree, counted as RSS.
@@ -82,6 +83,7 @@ case $mode in
     runs=${2:-5}
     app=${3:-$default_app}
     [ -x "$app" ] || { echo "No app at $app; build it with 'just package'." >&2; exit 1; }
+    if pgrep -x specdeck-app >/dev/null; then echo "SpecDeck is running; quit it first." >&2; exit 1; fi
     log=$(mktemp)
     trap 'rm -f "$log"' EXIT
     times=()
@@ -108,6 +110,7 @@ case $mode in
     minutes=${2:-60}
     app=${3:-$default_app}
     [ -x "$app" ] || { echo "No app at $app; build it with 'just package'." >&2; exit 1; }
+    if pgrep -x specdeck-app >/dev/null; then echo "SpecDeck is running; quit it first." >&2; exit 1; fi
     log=$(mktemp)
     webkit_before=$(webkit_pids)
     pid=$(start_app "$app" measure-footprint "$log")
