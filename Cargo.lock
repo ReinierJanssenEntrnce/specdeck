@@ -4441,7 +4441,7 @@ dependencies = [
 
 [[package]]
 name = "specdeck-app"
-version = "1.0.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -4462,7 +4462,7 @@ dependencies = [
 
 [[package]]
 name = "specdeck-core"
-version = "1.0.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "alacritty_terminal",
  "axum",
@@ -4485,7 +4485,7 @@ dependencies = [
 
 [[package]]
 name = "specdeck-protocol"
-version = "1.0.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "ed25519-dalek",
  "getrandom 0.4.3",
@@ -4501,7 +4501,7 @@ dependencies = [
 
 [[package]]
 name = "specdeck-signalling"
-version = "1.0.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
