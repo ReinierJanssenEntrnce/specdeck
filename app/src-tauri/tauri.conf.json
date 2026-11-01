@@ -27,7 +27,8 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "minimumSystemVersion": "11.0"
     },
     "category": "DeveloperTool",
     "shortDescription": "Run a coding agent with your team watching along",

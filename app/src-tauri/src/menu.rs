@@ -3,7 +3,9 @@
 //!
 //! Most items are handled by the UI, which gets their id in a `menu` event. The host's terminal
 //! gets first refusal on keys, so on Windows and Linux no item takes a key the terminal needs
-//! (Ctrl+C, Ctrl+F, Ctrl+N, Ctrl+W and the like); the UI handles those keys itself.
+//! (Ctrl+C, Ctrl+F, Ctrl+N, Ctrl+W and the like); the UI handles those keys itself. The zoom keys
+//! (Ctrl+=, Ctrl+-, Ctrl+0) are the exception, as in Windows Terminal and GNOME Terminal; Ctrl+_
+//! (undo) still reaches the terminal.
 
 use std::path::PathBuf;
 
@@ -25,6 +27,10 @@ pub mod ids {
     pub const PEOPLE: &str = "tab:people";
     pub const JUMP_TO_LIVE: &str = "jump-to-live";
     pub const SHORTCUTS: &str = "shortcuts";
+    /// Handled in Rust: zoom the main window and remember the level.
+    pub const ZOOM_IN: &str = "zoom-in";
+    pub const ZOOM_OUT: &str = "zoom-out";
+    pub const ZOOM_RESET: &str = "zoom-reset";
     /// Handled in Rust: confirms first while a session is hosted.
     pub const QUIT: &str = "quit";
     /// Edit commands on Windows and Linux, where the native ones would take terminal keys.
@@ -122,6 +128,10 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, state: &MenuState) -> tauri::Result
         .item(&item(app, ids::TIMELINE, "Timeline", Some("CmdOrCtrl+1"), true)?)
         .item(&item(app, ids::FILES, "Files", Some("CmdOrCtrl+2"), true)?)
         .item(&item(app, ids::PEOPLE, "People", Some("CmdOrCtrl+3"), true)?)
+        .separator()
+        .item(&item(app, ids::ZOOM_IN, "Zoom In", Some("CmdOrCtrl+="), true)?)
+        .item(&item(app, ids::ZOOM_OUT, "Zoom Out", Some("CmdOrCtrl+-"), true)?)
+        .item(&item(app, ids::ZOOM_RESET, "Actual Size", Some("CmdOrCtrl+0"), true)?)
         .separator()
         .item(&item(app, ids::JUMP_TO_LIVE, "Jump to Live", keys("Cmd+Down", None), true)?);
     if mac {

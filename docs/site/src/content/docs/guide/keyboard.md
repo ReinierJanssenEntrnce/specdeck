@@ -16,3 +16,6 @@ Everything in SpecDeck works with the keyboard alone, and every control has a na
 | Find in the terminal and timeline | **⌘F** (macOS) or **Ctrl+F** (Windows, Linux); **Ctrl+Shift+F** in the host's own terminal |
 | Open Timeline, Files or People | **⌘1**, **⌘2**, **⌘3** (macOS) or **Ctrl+1**, **Ctrl+2**, **Ctrl+3** (Windows, Linux) |
 | Open Settings | **⌘,** (macOS) or **Ctrl+,** (Windows, Linux) |
+| Make everything larger or smaller | **⌘+**, **⌘−**, and **⌘0** for actual size (macOS) or **Ctrl++**, **Ctrl+−**, **Ctrl+0** (Windows, Linux), or **View › Zoom In**, **Zoom Out**, **Actual Size**. The level is remembered |
+
+Zoom changes only your own window. One exception: while you host, zooming in fits fewer columns in your terminal, so the agent's terminal gets narrower for everyone, as it does when you make the window smaller.

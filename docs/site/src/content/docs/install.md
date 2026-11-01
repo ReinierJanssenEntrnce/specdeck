@@ -7,8 +7,8 @@ Everyone in a session needs SpecDeck: the host and every viewer. Download it fro
 
 | Platform | How |
 |---|---|
-| macOS (Apple silicon) | `brew install --cask nickhartjes/tap/specdeck`, or `SpecDeck-arm64.dmg` |
-| macOS (Intel) | `brew install --cask nickhartjes/tap/specdeck`, or `SpecDeck-x64.dmg` |
+| macOS 11 or later (Apple silicon) | `brew install --cask nickhartjes/tap/specdeck`, or `SpecDeck-arm64.dmg` |
+| macOS 11 or later (Intel) | `brew install --cask nickhartjes/tap/specdeck`, or `SpecDeck-x64.dmg` |
 | Windows | `SpecDeck-x64-setup.exe` |
 | Linux | `SpecDeck-x86_64.AppImage`, `SpecDeck-amd64.deb`, or [Nix](#nix) |
 

@@ -32,7 +32,7 @@ use tauri_plugin_window_state::StateFlags;
 
 use crate::host::{HostEvent, HostNotice, HostRuntime, SharingState, StartOptions, Summary};
 use crate::services::{ServiceCheck, Services};
-use crate::settings::{Settings, View};
+use crate::settings::{Settings, View, ZOOM_DEFAULT, zoom_in, zoom_out};
 use crate::viewer::{EndReason, ViewEvent, ViewerRuntime};
 
 struct AppState {
@@ -596,6 +596,7 @@ fn open_main_window(app: &AppHandle) {
         builder = builder.transparent(true);
     }
     let Ok(window) = builder.build() else { return };
+    apply_zoom(&window, app.state::<AppState>().settings.lock().unwrap().zoom);
     let translucent = apply_material(&window);
     app.state::<AppState>().translucent.store(translucent, Ordering::Relaxed);
 }
@@ -650,6 +651,9 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     match id {
         menu::ids::QUIT => return quit(app),
         menu::ids::SETTINGS => return open_settings_window(app),
+        menu::ids::ZOOM_IN => return change_zoom(app, zoom_in),
+        menu::ids::ZOOM_OUT => return change_zoom(app, zoom_out),
+        menu::ids::ZOOM_RESET => return change_zoom(app, |_| ZOOM_DEFAULT),
         tray::ids::OPEN => return open_main_window(app),
         tray::ids::COPY_CODE => return copy_invite_code(app),
         tray::ids::END => return confirm_end_session(app),
@@ -669,6 +673,27 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     // The menu works with the window closed too (macOS, while hosting).
     open_main_window(app);
     let _ = app.emit("menu", command);
+}
+
+/// Moves the zoom level, remembers it and applies it to the main window if it is open. The
+/// settings window keeps its normal size: it cannot be resized to fit.
+fn change_zoom(app: &AppHandle, step: impl FnOnce(u16) -> u16) {
+    let state = app.state::<AppState>();
+    let level = {
+        let mut settings = state.settings.lock().unwrap();
+        settings.zoom = step(settings.zoom);
+        state.save(&settings);
+        settings.zoom
+    };
+    if let Some(window) = app.get_webview_window("main") {
+        apply_zoom(&window, level);
+    }
+}
+
+fn apply_zoom(window: &tauri::WebviewWindow, level: u16) {
+    // A refused level (WebView2) leaves the window as it was. On macOS this needs 11 or later,
+    // the bundle's minimum: older WebKit has no page zoom and crashes instead of failing.
+    let _ = window.set_zoom(f64::from(level) / 100.0);
 }
 
 /// Copies the invite code from the tray, which works with the window closed too.
