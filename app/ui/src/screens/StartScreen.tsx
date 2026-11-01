@@ -22,6 +22,8 @@ interface Props {
 
 /** Choose to host or to join, and set your name the first time. */
 export function StartScreen({ profile, onProfile, onHosting, onJoin, initialCode = '', joinError, command = null, onCommandDone = () => {} }: Props) {
+  const bridge = useBridge();
+  useEffect(() => void bridge.startScreenShown().catch(() => {}), [bridge]);
   // Without a name there is nothing to host or join yet.
   useEffect(() => {
     if (command && !profile.username) onCommandDone();

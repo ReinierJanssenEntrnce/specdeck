@@ -202,6 +202,7 @@ export function demoBridge(screen: string): Bridge {
     leaveSession: async () => {},
     takeJoinLink: async () => null,
     copyText: async () => {},
+    startScreenShown: async () => {},
     onMenu: () => () => {},
   };
 }

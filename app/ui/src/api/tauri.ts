@@ -52,6 +52,7 @@ export const tauriBridge: Bridge = {
   leaveSession: () => invoke('leave_session'),
   takeJoinLink: () => invoke<JoinLink | null>('take_join_link'),
   copyText: (text) => navigator.clipboard.writeText(text),
+  startScreenShown: () => invoke('start_screen_shown'),
   onMenu: (handler) => {
     const stop = listen<MenuCommand>('menu', (event) => handler(event.payload));
     return () => void stop.then((unlisten) => unlisten());

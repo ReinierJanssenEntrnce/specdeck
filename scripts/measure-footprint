@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# Measures the app's start time and memory (native-experience "Resource footprint", task 2.2 of
+# release-and-verification). Targets: a usable start screen within 1.5 s of a cold start, and at
+# most 250 MB in total while viewing a one-hour session, on the reference machines (design 12).
+#
+#   scripts/measure-footprint start [runs] [app binary]
+#       Starts the app `runs` times (default 5) and reports the time until the start screen is
+#       usable. Run it right after a reboot: the first start is the cold one.
+#   scripts/measure-footprint memory [minutes] [app binary]
+#       Starts the app, waits while you join a session in it, then samples the app's memory every
+#       10 s for `minutes` (default 60) and reports the peak.
+#
+# The app binary defaults to the built bundle: SpecDeck.app on macOS, target/release on Linux.
+# Both modes use their own profile, so they do not touch your settings or a running SpecDeck.
+# Memory is the app's process plus its web engine's: on macOS the WebKit processes that appeared
+# after the app started (so start no other WebKit app meanwhile), counted as their physical
+# footprint as Activity Monitor shows it; on Linux the app's process tree, counted as RSS.
+set -euo pipefail
+
+mode=${1:-}
+case $(uname -s) in
+  Darwin) default_app=target/release/bundle/macos/SpecDeck.app/Contents/MacOS/specdeck-app ;;
+  *) default_app=target/release/specdeck-app ;;
+esac
+
+usage() {
+  sed -n '7,12p' "$0" | sed 's/^# \{0,1\}//'
+  exit 1
+}
+
+now_ms() { perl -MTime::HiRes=time -e 'printf "%d\n", time * 1000'; }
+
+webkit_pids() {
+  pgrep -f 'WebKit.framework/.*/com\.apple\.WebKit\.' | sort -n || true
+}
+
+# The app's process and its descendants (Linux), or the app plus the WebKit processes that are
+# not in $webkit_before (macOS).
+app_pids() {
+  local app=$1
+  if [ "$(uname -s)" = Darwin ]; then
+    echo "$app"
+    comm -13 <(printf '%s\n' "$webkit_before") <(webkit_pids)
+  else
+    local queue=("$app")
+    while [ ${#queue[@]} -gt 0 ]; do
+      local pid=${queue[0]}
+      queue=("${queue[@]:1}")
+      echo "$pid"
+      for child in $(pgrep -P "$pid" || true); do queue+=("$child"); done
+    done
+  fi
+}
+
+# Total memory of the given processes, in MB.
+memory_mb() {
+  if [ "$(uname -s)" = Darwin ]; then
+    local args=()
+    for pid in "$@"; do args+=(-p "$pid"); done
+    # footprint prints one total when given several processes.
+    footprint "${args[@]}" 2>/dev/null |
+      awk '/phys_footprint:/ && !seen { v = $2; u = $3; seen = 1 }
+           END { if (u == "KB") v /= 1024; if (u == "GB") v *= 1024; printf "%.0f\n", v }'
+  else
+    ps -o rss= -p "$(IFS=,; echo "$*")" | awk '{ sum += $1 } END { printf "%.0f\n", sum / 1024 }'
+  fi
+}
+
+start_app() {
+  local app=$1 profile=$2 log=$3
+  SPECDECK_PROFILE=$profile SPECDECK_MEASURE_START=1 "$app" >"$log" 2>&1 &
+  echo $!
+}
+
+stop_app() {
+  kill "$1" 2>/dev/null || true
+  wait "$1" 2>/dev/null || true
+}
+
+case $mode in
+  start)
+    runs=${2:-5}
+    app=${3:-$default_app}
+    [ -x "$app" ] || { echo "No app at $app; build it with 'just package'." >&2; exit 1; }
+    log=$(mktemp)
+    trap 'rm -f "$log"' EXIT
+    times=()
+    for run in $(seq 1 "$runs"); do
+      started=$(now_ms)
+      pid=$(start_app "$app" measure-footprint "$log")
+      until grep -q 'specdeck: start screen shown' "$log"; do
+        kill -0 "$pid" 2>/dev/null || { echo "The app exited before its start screen:" >&2; cat "$log" >&2; exit 1; }
+        if [ $(($(now_ms) - started)) -gt 30000 ]; then echo "No start screen after 30 s." >&2; stop_app "$pid"; exit 1; fi
+        sleep 0.01
+      done
+      elapsed=$(($(now_ms) - started))
+      times+=("$elapsed")
+      echo "start $run: $elapsed ms"
+      stop_app "$pid"
+      : >"$log"
+      sleep 1
+    done
+    sorted=$(printf '%s\n' "${times[@]}" | sort -n)
+    median=$(echo "$sorted" | awk '{ a[NR] = $1 } END { print (NR % 2) ? a[(NR + 1) / 2] : int((a[NR / 2] + a[NR / 2 + 1]) / 2) }')
+    echo "first: ${times[0]} ms, median: $median ms, target: 1500 ms"
+    ;;
+  memory)
+    minutes=${2:-60}
+    app=${3:-$default_app}
+    [ -x "$app" ] || { echo "No app at $app; build it with 'just package'." >&2; exit 1; }
+    log=$(mktemp)
+    webkit_before=$(webkit_pids)
+    pid=$(start_app "$app" measure-footprint "$log")
+    trap 'stop_app "$pid"; rm -f "$log"' EXIT
+    echo "Join the session to measure in the window that opened, then press Enter."
+    read -r
+    peak=0
+    end=$(($(date +%s) + minutes * 60))
+    while [ "$(date +%s)" -lt "$end" ]; do
+      kill -0 "$pid" 2>/dev/null || { echo "The app exited." >&2; exit 1; }
+      # shellcheck disable=SC2046
+      mb=$(memory_mb $(app_pids "$pid"))
+      [ "$mb" -gt "$peak" ] && peak=$mb
+      echo "$(date +%H:%M:%S) ${mb} MB (peak ${peak} MB)"
+      sleep 10
+    done
+    echo "peak: $peak MB over $minutes min, target: 250 MB"
+    ;;
+  *) usage ;;
+esac

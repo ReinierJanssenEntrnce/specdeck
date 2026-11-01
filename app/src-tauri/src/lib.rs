@@ -441,6 +441,15 @@ fn open_link(app: &AppHandle, link: &str) {
     let _ = app.emit_to("main", "menu", MenuCommand { id: "join-link".into(), path: None });
 }
 
+/// The start screen is usable. With `SPECDECK_MEASURE_START` set, says so on standard output, for
+/// `scripts/measure-footprint` (task 2.2 of release-and-verification).
+#[tauri::command]
+fn start_screen_shown() {
+    if std::env::var_os("SPECDECK_MEASURE_START").is_some() {
+        println!("specdeck: start screen shown");
+    }
+}
+
 #[tauri::command]
 async fn take_join_link(state: State<'_, AppState>) -> Result<Option<JoinLink>, String> {
     Ok(state.join_link.lock().unwrap().take())
@@ -753,6 +762,7 @@ pub fn run() {
             join_session,
             leave_session,
             take_join_link,
+            start_screen_shown,
         ])
         .build(tauri::generate_context!())
         .expect("error while building SpecDeck");

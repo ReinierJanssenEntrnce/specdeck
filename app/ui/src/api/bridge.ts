@@ -30,6 +30,8 @@ export interface Bridge {
   /** The join link that opened the app or came in since, once; null when there is none. */
   takeJoinLink(): Promise<JoinLink | null>;
   copyText(text: string): Promise<void>;
+  /** Tells the app the start screen can be used; scripts/measure-footprint times this. */
+  startScreenShown(): Promise<void>;
   /** Calls `handler` for each native menu command; returns a function that stops listening. */
   onMenu(handler: (command: MenuCommand) => void): () => void;
 }
