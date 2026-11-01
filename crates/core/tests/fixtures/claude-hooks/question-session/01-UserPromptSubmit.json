@@ -1,0 +1,9 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "760ffa66-addf-49b1-a6b2-12893eb3dd17",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "Use the AskUserQuestion tool once, with two questions in that one call: (1) single-select, header \"Database\", question \"Which database?\", options \"Postgres\" (Relational, robust) and \"SQLite\" (File based, simple); (2) multiSelect true, header \"Features\", question \"Which features?\", options \"Auth\", \"Search\", \"Export\". After I answer, just repeat my answers in one line. Do nothing else."
+}

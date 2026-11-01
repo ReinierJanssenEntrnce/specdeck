@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TimelineEvent } from '../api/types';
+import type { TimelineEvent, ToolOutcome } from '../api/types';
 import { buildTimeline, toolSummary, turnText } from './timeline';
 
 let at = 1000;
@@ -90,5 +90,26 @@ describe('attention', () => {
     ]);
     expect(turns[0]!.items.at(-1)).toMatchObject({ kind: 'notice', text: 'Claude needs your permission to use Bash' });
     expect(turnText(turns[0]!)).toContain('permission to use Bash');
+  });
+});
+
+describe('host interactions', () => {
+  it('keeps what the host decided and what a helper reported later', () => {
+    const answers: ToolOutcome = { kind: 'answers', answers: [{ question: 'Which database?', selected: ['Postgres'] }] };
+    const { turns } = buildTimeline([
+      { ...stamp(), kind: 'prompt', promptId: 'p1', text: 'go' },
+      { ...stamp(), kind: 'tool-call', promptId: 'p1', toolUseId: 'q', toolName: 'AskUserQuestion', input: {} },
+      { ...stamp(), kind: 'tool-result', promptId: 'p1', toolUseId: 'q', status: 'succeeded', outcome: answers },
+      { ...stamp(), kind: 'tool-call', promptId: 'p1', toolUseId: 'b', toolName: 'Bash', input: {} },
+      { ...stamp(), kind: 'tool-result', promptId: 'p1', toolUseId: 'b', status: 'not-run', permission: 'denied' },
+      { ...stamp(), kind: 'tool-call', promptId: 'p1', toolUseId: 'h', toolName: 'Agent', input: {} },
+      { ...stamp(), kind: 'tool-result', promptId: 'p1', toolUseId: 'h', status: 'succeeded' },
+      { ...stamp(), kind: 'tool-result', promptId: 'p1', toolUseId: 'h', status: 'succeeded', outcome: { kind: 'report', text: 'Done.', truncated: false } },
+    ]);
+    expect(turns[0]!.items).toMatchObject([
+      { toolName: 'AskUserQuestion', status: 'succeeded', outcome: answers },
+      { toolName: 'Bash', status: 'not-run', permission: 'denied' },
+      { toolName: 'Agent', status: 'succeeded', outcome: { kind: 'report', text: 'Done.' } },
+    ]);
   });
 });

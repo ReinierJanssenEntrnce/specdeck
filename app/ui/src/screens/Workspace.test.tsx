@@ -80,7 +80,12 @@ describe('summary steps', () => {
     renderWorkspace({ steps: 'summary' });
     const first = screen.getByRole('article', { name: 'Prompt 1' });
     const lines = [...first.querySelectorAll('.step > summary')].map((summary) => summary.textContent);
-    expect(lines).toEqual(['Looked at 1 fileDone', 'Changed 2 filesDone', 'Ran the health testsFailed']);
+    expect(lines).toEqual([
+      'Looked at 1 fileDone',
+      'Asked: What should /health return when the database is down? → 503 Service UnavailableDone',
+      'Changed 2 filesDone',
+      'Ran the health testsAllowed by the hostFailed',
+    ]);
     expect(within(first).queryByLabelText('Created src/routes/health.ts')).not.toBeVisible();
     await userEvent.click(within(first).getByText('Changed 2 files'));
     expect(within(first).getByLabelText('Created src/routes/health.ts')).toBeVisible();

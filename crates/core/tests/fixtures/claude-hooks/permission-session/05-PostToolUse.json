@@ -1,0 +1,25 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "804bff52-254a-4122-af44-c813caf4017e",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "mkdir allowed-dir",
+    "description": "Create the allowed folder"
+  },
+  "tool_response": {
+    "stdout": "",
+    "stderr": "",
+    "interrupted": false,
+    "isImage": false,
+    "noOutputExpected": true
+  },
+  "tool_use_id": "toolu_011Xxk4TFHYAvM5uhUJAs7MK",
+  "duration_ms": 853
+}

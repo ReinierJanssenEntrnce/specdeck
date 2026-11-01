@@ -1,0 +1,26 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "ee74190b-f1df-4b43-80f9-7f357dfd34fb",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/workspace/project/greeting.txt",
+    "content": "hi\n"
+  },
+  "tool_response": {
+    "type": "create",
+    "filePath": "/workspace/project/greeting.txt",
+    "content": "hi\n",
+    "structuredPatch": [],
+    "originalFile": null,
+    "userModified": false
+  },
+  "tool_use_id": "toolu_01FQSEoZ1PRWP4d6NxYr3hFp",
+  "duration_ms": 16
+}

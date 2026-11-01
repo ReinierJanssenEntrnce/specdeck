@@ -48,6 +48,13 @@ pub enum Entry {
         status: ToolStatus,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        /// What the host decided or a helper reported; a call can get a second result that adds
+        /// it, such as a background helper's report.
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "lenient")]
+        outcome: Option<ToolOutcome>,
+        /// Whether the host allowed the call, when Claude Code asked them.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        permission: Option<Permission>,
     },
     FileChange {
         prompt_id: String,
@@ -209,6 +216,45 @@ pub enum ToolStatus {
     NotRun,
 }
 
+/// The outcome of a call that asked the host something or handed work to a helper.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum ToolOutcome {
+    /// The host's answers to Claude's questions, in the order of the questions.
+    Answers { answers: Vec<Answer> },
+    /// Whether the host approved the plan the call presented.
+    PlanDecision { approved: bool },
+    /// What a helper reported back; cut to its start when it was too large to send.
+    Report { text: String, truncated: bool },
+}
+
+/// The host's answer to one question; empty when they did not answer.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Answer {
+    pub question: String,
+    /// The labels of the options the host picked.
+    #[serde(default)]
+    pub selected: Vec<String>,
+    /// What the host typed instead of, or besides, picking options.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub typed: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Permission {
+    Allowed,
+    Denied,
+}
+
+/// Reads an outcome this version does not know, such as a later kind, as none.
+fn lenient<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<ToolOutcome>, D::Error> {
+    Ok(Option::<Value>::deserialize(d)?.and_then(|value| serde_json::from_value(value).ok()))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FileChangeKind {
@@ -243,6 +289,8 @@ mod tests {
                 tool_use_id: "t".into(),
                 status: ToolStatus::NotRun,
                 error: None,
+                outcome: None,
+                permission: None,
             },
         };
         let json = serde_json::to_value(&event).unwrap();
@@ -326,6 +374,77 @@ mod tests {
             })
         );
         assert_eq!(serde_json::from_value::<Entry>(json).unwrap(), entry);
+    }
+
+    fn tool_result(outcome: Option<ToolOutcome>, permission: Option<Permission>) -> Entry {
+        Entry::ToolResult {
+            prompt_id: "p".into(),
+            tool_use_id: "t".into(),
+            status: ToolStatus::Succeeded,
+            error: None,
+            outcome,
+            permission,
+        }
+    }
+
+    #[test]
+    fn tool_results_carry_outcomes_and_permission() {
+        let entry = tool_result(
+            Some(ToolOutcome::Answers {
+                answers: vec![Answer {
+                    question: "Which features?".into(),
+                    selected: vec!["Auth".into()],
+                    typed: Some("Audit log".into()),
+                    notes: None,
+                }],
+            }),
+            Some(Permission::Allowed),
+        );
+        let json = serde_json::to_value(&entry).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "kind": "tool-result", "promptId": "p", "toolUseId": "t", "status": "succeeded",
+                "outcome": { "kind": "answers", "answers": [
+                    { "question": "Which features?", "selected": ["Auth"], "typed": "Audit log" }
+                ] },
+                "permission": "allowed"
+            })
+        );
+        assert_eq!(serde_json::from_value::<Entry>(json).unwrap(), entry);
+
+        for outcome in [
+            ToolOutcome::PlanDecision { approved: false },
+            ToolOutcome::Report { text: "- **Files:** 1".into(), truncated: true },
+        ] {
+            let entry = tool_result(Some(outcome), Some(Permission::Denied));
+            let json = serde_json::to_value(&entry).unwrap();
+            assert_eq!(serde_json::from_value::<Entry>(json).unwrap(), entry);
+        }
+        assert_eq!(
+            serde_json::to_value(tool_result(
+                Some(ToolOutcome::PlanDecision { approved: true }),
+                None
+            ))
+            .unwrap()["outcome"],
+            serde_json::json!({ "kind": "plan-decision", "approved": true })
+        );
+    }
+
+    #[test]
+    fn tool_results_without_or_with_unknown_outcomes_still_parse() {
+        let plain = serde_json::json!({
+            "kind": "tool-result", "promptId": "p", "toolUseId": "t", "status": "succeeded"
+        });
+        assert_eq!(
+            serde_json::from_value::<Entry>(plain.clone()).unwrap(),
+            tool_result(None, None)
+        );
+        assert_eq!(serde_json::to_value(tool_result(None, None)).unwrap(), plain);
+
+        let mut later = plain;
+        later["outcome"] = serde_json::json!({ "kind": "poll", "votes": 3 });
+        assert_eq!(serde_json::from_value::<Entry>(later).unwrap(), tool_result(None, None));
     }
 
     #[test]

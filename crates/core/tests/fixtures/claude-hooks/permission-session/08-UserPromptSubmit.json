@@ -1,0 +1,9 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "06028136-d11c-40aa-a510-d20f9af64dab",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "Now run exactly this Bash command, with the description \"Create the denied folder\": mkdir denied-dir"
+}

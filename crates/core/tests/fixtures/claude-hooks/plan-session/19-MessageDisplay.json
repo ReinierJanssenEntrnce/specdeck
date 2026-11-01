@@ -1,0 +1,12 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "ee74190b-f1df-4b43-80f9-7f357dfd34fb",
+  "hook_event_name": "MessageDisplay",
+  "turn_id": "b7b561e5-c0a2-4657-b958-8746f48d2495",
+  "message_id": "f5295f3a-1b2e-40be-b39c-5a0b2baccc42",
+  "index": 0,
+  "final": true,
+  "delta": "Created `greeting.txt` containing `hi` at `/workspace/project/greeting.txt`. I did not read it back to verify."
+}

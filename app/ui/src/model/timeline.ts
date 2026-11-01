@@ -1,7 +1,7 @@
 // Turns the flat list of timeline events into what the timeline panel shows: one turn per
 // prompt, with the agent's text and tool calls in order, and the files it touched.
 
-import type { DiffHunk, TimelineEvent, TokenCounts } from '../api/types';
+import type { DiffHunk, Permission, TimelineEvent, TokenCounts, ToolOutcome } from '../api/types';
 
 export type ToolStatus = 'running' | 'succeeded' | 'failed' | 'not-run';
 
@@ -29,6 +29,10 @@ export interface ToolItem {
   input: Record<string, unknown>;
   status: ToolStatus;
   error?: string;
+  /** What the host decided or a helper reported, once known. */
+  outcome?: ToolOutcome;
+  /** Whether the host allowed the call, when they were asked. */
+  permission?: Permission;
   changes: FileChange[];
   outputSeq: number;
   /** When the call started, in milliseconds since the epoch. */
@@ -149,6 +153,9 @@ export function buildTimeline(events: TimelineEvent[]): TimelineModel {
         if (item) {
           item.status = event.status;
           if (event.error) item.error = event.error;
+          // A call can get a second result that adds an outcome, such as a helper's report.
+          if (event.outcome) item.outcome = event.outcome;
+          if (event.permission) item.permission = event.permission;
         }
         break;
       }

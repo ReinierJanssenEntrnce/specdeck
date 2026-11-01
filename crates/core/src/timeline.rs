@@ -2,11 +2,14 @@
 //! from the recorded hooks in `tests/fixtures/claude-hooks`; fields the timeline does not use are
 //! ignored.
 
+use std::collections::HashMap;
 use std::path::{Component, Path};
 
 use serde::Deserialize;
 use serde_json::{Map, Value};
-use specdeck_protocol::timeline::{DiffHunk, Entry, FileChangeKind, TimelineEvent, ToolStatus};
+use specdeck_protocol::timeline::{
+    Answer, DiffHunk, Entry, FileChangeKind, Permission, TimelineEvent, ToolOutcome, ToolStatus,
+};
 
 use crate::documents::DocumentText;
 use crate::hooks::HookPayload;
@@ -56,6 +59,13 @@ enum Payload {
         #[serde(default)]
         notification_type: String,
     },
+    /// A helper finished. Claude Code also sends it for internal agents no `Agent` call started.
+    SubagentStop {
+        #[serde(default)]
+        agent_id: Option<String>,
+        #[serde(default)]
+        last_assistant_message: Option<String>,
+    },
 }
 
 /// Notifications that mean Claude Code waits for the host; others (such as being idle) do not.
@@ -67,6 +77,19 @@ struct ToolCall {
     tool_name: String,
     tool_use_id: String,
     tool_input: Map<String, Value>,
+    /// Set when a helper made the call.
+    #[serde(default)]
+    agent_id: Option<String>,
+}
+
+/// A tool call without a result yet.
+struct OpenCall {
+    tool_use_id: String,
+    prompt_id: String,
+    tool_name: String,
+    by_helper: bool,
+    /// Claude Code asked the host's permission for it.
+    awaiting_permission: bool,
 }
 
 /// What file-editing tools report in `tool_response`.
@@ -91,6 +114,11 @@ fn present_or_null<'de, D: serde::Deserializer<'de>>(
 
 const FILE_EDITING_TOOLS: [&str; 4] = ["Write", "Edit", "MultiEdit", "NotebookEdit"];
 const FILE_READING_TOOLS: [&str; 1] = ["Read"];
+const QUESTION_TOOL: &str = "AskUserQuestion";
+const PLAN_TOOL: &str = "ExitPlanMode";
+const HELPER_TOOLS: [&str; 2] = ["Agent", "Task"];
+/// A helper's report is cut to this many bytes, like a document's text.
+const MAX_REPORT_BYTES: usize = 200 * 1024;
 
 pub struct TimelineBuilder {
     /// Session folder; file paths inside it are shown relative to it.
@@ -98,8 +126,10 @@ pub struct TimelineBuilder {
     /// The same folder with symlinks resolved, as the agent may report it (`/private/var` for
     /// `/var` on macOS).
     resolved_cwd: Option<std::path::PathBuf>,
-    /// Tool calls without a result yet: tool_use_id → prompt_id, in call order.
-    open_tools: Vec<(String, String)>,
+    /// Tool calls without a result yet, in call order.
+    open_calls: Vec<OpenCall>,
+    /// Helpers running in the background: agent id → (tool_use_id, prompt_id) of their call.
+    background_helpers: HashMap<String, (String, String)>,
 }
 
 impl TimelineBuilder {
@@ -107,7 +137,7 @@ impl TimelineBuilder {
         let cwd = cwd.into();
         let resolved_cwd =
             Path::new(&cwd).canonicalize().ok().filter(|resolved| *resolved != Path::new(&cwd));
-        Self { cwd, resolved_cwd, open_tools: Vec::new() }
+        Self { cwd, resolved_cwd, open_calls: Vec::new(), background_helpers: HashMap::new() }
     }
 
     /// The event for starting the agent, which the engine emits itself.
@@ -124,13 +154,23 @@ impl TimelineBuilder {
 
         Ok(match payload {
             Payload::UserPromptSubmit { prompt_id, prompt } => {
-                vec![Entry::Prompt { prompt_id, text: prompt }]
+                // A denied or dismissed call gets no result and its prompt no `Stop`; the next
+                // prompt is the first sign that it never ran.
+                let mut entries = self.close_main_calls(|call| call.prompt_id != prompt_id);
+                entries.push(Entry::Prompt { prompt_id, text: prompt });
+                entries
             }
             Payload::MessageDisplay { prompt_id, message_id, delta, r#final } => {
                 vec![Entry::Message { prompt_id, message_id, text: delta, r#final }]
             }
             Payload::PreToolUse(call) => {
-                self.open_tools.push((call.tool_use_id.clone(), call.prompt_id.clone()));
+                self.open_calls.push(OpenCall {
+                    tool_use_id: call.tool_use_id.clone(),
+                    prompt_id: call.prompt_id.clone(),
+                    tool_name: call.tool_name.clone(),
+                    by_helper: call.agent_id.is_some(),
+                    awaiting_permission: false,
+                });
                 vec![Entry::ToolCall {
                     prompt_id: call.prompt_id,
                     tool_use_id: call.tool_use_id,
@@ -139,12 +179,28 @@ impl TimelineBuilder {
                 }]
             }
             Payload::PostToolUse { call, tool_response } => {
-                self.close_tool(&call.tool_use_id);
+                let permission = self.close_call(&call.tool_use_id);
+                let outcome = match call.tool_name.as_str() {
+                    QUESTION_TOOL => answers(&tool_response, &call.tool_input),
+                    PLAN_TOOL => Some(ToolOutcome::PlanDecision { approved: true }),
+                    name if HELPER_TOOLS.contains(&name) => {
+                        if let Some(agent_id) = background_agent(&tool_response) {
+                            self.background_helpers.insert(
+                                agent_id.to_owned(),
+                                (call.tool_use_id.clone(), call.prompt_id.clone()),
+                            );
+                        }
+                        report_text(&tool_response).map(report)
+                    }
+                    _ => None,
+                };
                 let mut entries = vec![Entry::ToolResult {
                     prompt_id: call.prompt_id.clone(),
                     tool_use_id: call.tool_use_id.clone(),
                     status: ToolStatus::Succeeded,
                     error: None,
+                    outcome,
+                    permission,
                 }];
                 if FILE_EDITING_TOOLS.contains(&call.tool_name.as_str()) {
                     entries.extend(self.file_change(&call, tool_response));
@@ -162,29 +218,20 @@ impl TimelineBuilder {
                 entries
             }
             Payload::PostToolUseFailure { call, error } => {
-                self.close_tool(&call.tool_use_id);
+                // Failing, or being interrupted while running, means the host allowed it.
+                let permission = self.close_call(&call.tool_use_id);
                 vec![Entry::ToolResult {
                     prompt_id: call.prompt_id,
                     tool_use_id: call.tool_use_id,
                     status: ToolStatus::Failed,
                     error,
+                    outcome: None,
+                    permission,
                 }]
             }
             Payload::Stop { prompt_id, last_assistant_message } => {
                 // A tool call without a result by the end of the turn never ran.
-                let (not_run, open): (Vec<_>, Vec<_>) = std::mem::take(&mut self.open_tools)
-                    .into_iter()
-                    .partition(|(_, p)| *p == prompt_id);
-                self.open_tools = open;
-                let mut entries: Vec<Entry> = not_run
-                    .into_iter()
-                    .map(|(tool_use_id, prompt_id)| Entry::ToolResult {
-                        prompt_id,
-                        tool_use_id,
-                        status: ToolStatus::NotRun,
-                        error: None,
-                    })
-                    .collect();
+                let mut entries = self.close_main_calls(|call| call.prompt_id == prompt_id);
                 if let Some(text) = last_assistant_message {
                     entries.push(Entry::Response { prompt_id, text });
                 }
@@ -192,13 +239,56 @@ impl TimelineBuilder {
             }
             Payload::SessionEnd => vec![Entry::SessionEnded],
             Payload::Notification { message, notification_type } => {
+                if notification_type == "permission_prompt"
+                    && let Some(call) = self.open_calls.last_mut()
+                    // These two ask for permission to show their own dialog.
+                    && call.tool_name != QUESTION_TOOL
+                    && call.tool_name != PLAN_TOOL
+                {
+                    call.awaiting_permission = true;
+                }
                 if ATTENTION_TYPES.contains(&notification_type.as_str()) {
                     vec![Entry::Attention { message }]
                 } else {
                     Vec::new()
                 }
             }
+            Payload::SubagentStop { agent_id, last_assistant_message } => {
+                let helper = agent_id.and_then(|id| self.background_helpers.remove(&id));
+                match (helper, last_assistant_message) {
+                    (Some((tool_use_id, prompt_id)), Some(text)) => vec![Entry::ToolResult {
+                        prompt_id,
+                        tool_use_id,
+                        status: ToolStatus::Succeeded,
+                        error: None,
+                        outcome: Some(report(text)),
+                        permission: None,
+                    }],
+                    _ => Vec::new(),
+                }
+            }
         })
+    }
+
+    /// Ends the calls of the main conversation that `ends` picks as not run. A helper's calls are
+    /// left open: the main conversation goes on while a background helper works.
+    fn close_main_calls(&mut self, ends: impl Fn(&OpenCall) -> bool) -> Vec<Entry> {
+        let (ended, open): (Vec<_>, Vec<_>) = std::mem::take(&mut self.open_calls)
+            .into_iter()
+            .partition(|call| !call.by_helper && ends(call));
+        self.open_calls = open;
+        ended
+            .into_iter()
+            .map(|call| Entry::ToolResult {
+                outcome: (call.tool_name == PLAN_TOOL)
+                    .then_some(ToolOutcome::PlanDecision { approved: false }),
+                permission: call.awaiting_permission.then_some(Permission::Denied),
+                prompt_id: call.prompt_id,
+                tool_use_id: call.tool_use_id,
+                status: ToolStatus::NotRun,
+                error: None,
+            })
+            .collect()
     }
 
     /// `entries` with each document's text right after the change that produced it. A document
@@ -245,8 +335,10 @@ impl TimelineBuilder {
             .collect()
     }
 
-    fn close_tool(&mut self, tool_use_id: &str) {
-        self.open_tools.retain(|(id, _)| id != tool_use_id);
+    /// Forgets an open call that got its result; `Allowed` when the host was asked about it.
+    fn close_call(&mut self, tool_use_id: &str) -> Option<Permission> {
+        let index = self.open_calls.iter().position(|call| call.tool_use_id == tool_use_id)?;
+        self.open_calls.remove(index).awaiting_permission.then_some(Permission::Allowed)
     }
 
     fn file_change(&self, call: &ToolCall, response: Value) -> Option<Entry> {
@@ -294,6 +386,73 @@ fn added_file(content: &str) -> DiffHunk {
     let content = content.strip_suffix('\n').unwrap_or(content);
     let lines: Vec<String> = content.split('\n').map(|line| format!("+{line}")).collect();
     DiffHunk { old_start: 0, old_lines: 0, new_start: 1, new_lines: lines.len() as u32, lines }
+}
+
+/// The host's answers to an `AskUserQuestion` call. Claude Code reports each answer as one text,
+/// with several picks and anything the host typed joined by ", ".
+fn answers(response: &Value, input: &Map<String, Value>) -> Option<ToolOutcome> {
+    let given = response.get("answers")?.as_object()?;
+    let questions = response.get("questions").or_else(|| input.get("questions"))?.as_array()?;
+    let notes = response.get("annotations");
+    let answers = questions
+        .iter()
+        .map(|question| {
+            let text = question.get("question")?.as_str()?;
+            let labels: Vec<&str> = question
+                .get("options")
+                .and_then(Value::as_array)
+                .map(|options| options.iter().filter_map(|o| o.get("label")?.as_str()).collect())
+                .unwrap_or_default();
+            let mut answer = Answer {
+                question: text.to_owned(),
+                notes: notes.and_then(|n| n.get(text)?.get("notes")?.as_str()).map(str::to_owned),
+                ..Answer::default()
+            };
+            if let Some(given) = given.get(text).and_then(Value::as_str) {
+                let several = question.get("multiSelect").and_then(Value::as_bool) == Some(true);
+                let parts: Vec<&str> =
+                    if several { given.split(", ").collect() } else { vec![given] };
+                let (picked, typed): (Vec<&str>, Vec<&str>) =
+                    parts.into_iter().partition(|part| labels.contains(part));
+                answer.selected = picked.into_iter().map(str::to_owned).collect();
+                answer.typed = (!typed.is_empty()).then(|| typed.join(", "));
+            }
+            Some(answer)
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(ToolOutcome::Answers { answers })
+}
+
+/// The agent id of a helper that was started in the background and reports back later.
+fn background_agent(response: &Value) -> Option<&str> {
+    (response.get("status")?.as_str()? == "async_launched")
+        .then(|| response.get("agentId")?.as_str())
+        .flatten()
+}
+
+/// What a helper that ran in the foreground reported: its text parts, or the response itself
+/// when that is text.
+fn report_text(response: &Value) -> Option<String> {
+    if let Some(text) = response.as_str() {
+        return Some(text.to_owned());
+    }
+    let parts: Vec<&str> = response
+        .get("content")?
+        .as_array()?
+        .iter()
+        .filter(|part| part.get("type").and_then(Value::as_str) == Some("text"))
+        .filter_map(|part| part.get("text")?.as_str())
+        .collect();
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
+}
+
+/// A helper's report, cut to `MAX_REPORT_BYTES` on a character boundary.
+fn report(mut text: String) -> ToolOutcome {
+    let truncated = text.len() > MAX_REPORT_BYTES;
+    if truncated {
+        text.truncate(text.floor_char_boundary(MAX_REPORT_BYTES));
+    }
+    ToolOutcome::Report { text, truncated }
 }
 
 #[cfg(test)]
@@ -344,6 +503,8 @@ mod tests {
                 tool_use_id: "t".into(),
                 status: ToolStatus::Succeeded,
                 error: None,
+                outcome: None,
+                permission: None,
             },
             change("docs/plan.md", FileChangeKind::Edited),
             change("src/server.ts", FileChangeKind::Edited),
@@ -395,5 +556,148 @@ mod tests {
             "notification_type": "idle_prompt"
         })));
         assert!(idle.unwrap().is_empty());
+    }
+
+    fn call(event: &str, tool: &str, id: &str, extra: Value) -> HookPayload {
+        let mut payload = payload(serde_json::json!({
+            "hook_event_name": event, "prompt_id": "p", "tool_name": tool, "tool_use_id": id,
+            "tool_input": {}
+        }));
+        payload.extend(extra.as_object().unwrap().clone());
+        payload
+    }
+
+    fn outcome(entries: Vec<Entry>) -> Option<ToolOutcome> {
+        match entries.into_iter().next() {
+            Some(Entry::ToolResult { outcome, .. }) => outcome,
+            other => panic!("not a result: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn answers_keep_notes_and_unanswered_questions() {
+        let mut builder = TimelineBuilder::new("/work");
+        let response = serde_json::json!({ "tool_response": {
+            "questions": [
+                { "question": "Which database?", "multiSelect": false,
+                  "options": [{ "label": "Postgres" }, { "label": "SQLite" }] },
+                { "question": "Which color?", "options": [{ "label": "Red" }] }
+            ],
+            "answers": { "Which database?": "MySQL, please" },
+            "annotations": { "Which database?": { "notes": "We already run it" } }
+        }});
+        let entries = builder.handle(call("PostToolUse", "AskUserQuestion", "q", response));
+        assert_eq!(
+            outcome(entries.unwrap()),
+            Some(ToolOutcome::Answers {
+                answers: vec![
+                    // A single-select answer is not split, even with ", " in it.
+                    Answer {
+                        question: "Which database?".into(),
+                        selected: vec![],
+                        typed: Some("MySQL, please".into()),
+                        notes: Some("We already run it".into()),
+                    },
+                    Answer { question: "Which color?".into(), ..Answer::default() },
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn a_foreground_helper_reports_in_its_result() {
+        let mut builder = TimelineBuilder::new("/work");
+        let response = serde_json::json!({ "tool_response": { "content": [
+            { "type": "text", "text": "Two files." },
+            { "type": "image", "source": {} },
+            { "type": "text", "text": "Done." }
+        ]}});
+        assert_eq!(
+            outcome(builder.handle(call("PostToolUse", "Task", "h", response)).unwrap()),
+            Some(ToolOutcome::Report { text: "Two files.\n\nDone.".into(), truncated: false })
+        );
+    }
+
+    #[test]
+    fn long_reports_are_cut_on_a_character_boundary() {
+        // "é" is two bytes, so the limit falls inside the last one.
+        let text = format!("{}é", "a".repeat(MAX_REPORT_BYTES - 1));
+        let ToolOutcome::Report { text, truncated } = report(text) else { panic!() };
+        assert!(truncated);
+        assert_eq!(text.len(), MAX_REPORT_BYTES - 1);
+        assert_eq!(
+            report("short".into()),
+            ToolOutcome::Report { text: "short".into(), truncated: false }
+        );
+    }
+
+    #[test]
+    fn unrecognised_responses_give_no_outcome() {
+        let mut builder = TimelineBuilder::new("/work");
+        for tool in ["AskUserQuestion", "Agent", "Task"] {
+            let entries = builder.handle(call("PostToolUse", tool, tool, serde_json::json!({})));
+            assert_eq!(outcome(entries.unwrap()), None, "{tool}");
+            let odd = serde_json::json!({ "tool_response": { "answers": 3, "content": "x" } });
+            let entries = builder.handle(call("PostToolUse", tool, tool, odd));
+            assert_eq!(outcome(entries.unwrap()), None, "{tool}");
+        }
+    }
+
+    #[test]
+    fn a_helpers_calls_stay_open_while_the_main_conversation_goes_on() {
+        let mut builder = TimelineBuilder::new("/work");
+        let by_helper = serde_json::json!({ "agent_id": "a1" });
+        builder.handle(call("PreToolUse", "Bash", "main", serde_json::json!({}))).unwrap();
+        builder.handle(call("PreToolUse", "Bash", "helper", by_helper.clone())).unwrap();
+        let stop = payload(serde_json::json!({ "hook_event_name": "Stop", "prompt_id": "p" }));
+        let closed: Vec<_> = builder
+            .handle(stop)
+            .unwrap()
+            .into_iter()
+            .map(|entry| match entry {
+                Entry::ToolResult { tool_use_id, status, .. } => (tool_use_id, status),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(closed, [("main".to_owned(), ToolStatus::NotRun)]);
+        let next = payload(serde_json::json!({
+            "hook_event_name": "UserPromptSubmit", "prompt_id": "p2", "prompt": "next"
+        }));
+        assert!(matches!(&builder.handle(next).unwrap()[..], [Entry::Prompt { .. }]));
+        let ran = builder.handle(call("PostToolUse", "Bash", "helper", by_helper)).unwrap();
+        assert!(matches!(&ran[0], Entry::ToolResult { status: ToolStatus::Succeeded, .. }));
+    }
+
+    #[test]
+    fn a_permission_prompt_for_a_question_or_plan_is_no_permission_decision() {
+        let mut builder = TimelineBuilder::new("/work");
+        let prompt = || {
+            payload(serde_json::json!({
+                "hook_event_name": "Notification", "message": "Claude needs your permission",
+                "notification_type": "permission_prompt"
+            }))
+        };
+        builder.handle(call("PreToolUse", "Bash", "b", serde_json::json!({}))).unwrap();
+        builder.handle(call("PreToolUse", "ExitPlanMode", "x", serde_json::json!({}))).unwrap();
+        builder.handle(prompt()).unwrap();
+        let permission = |entries: Vec<Entry>| match &entries[0] {
+            Entry::ToolResult { permission, .. } => *permission,
+            other => panic!("{other:?}"),
+        };
+        // The older call is not taken for the plan's prompt.
+        assert_eq!(
+            permission(
+                builder.handle(call("PostToolUse", "Bash", "b", serde_json::json!({}))).unwrap()
+            ),
+            None
+        );
+        assert_eq!(
+            permission(
+                builder
+                    .handle(call("PostToolUse", "ExitPlanMode", "x", serde_json::json!({})))
+                    .unwrap()
+            ),
+            None
+        );
     }
 }

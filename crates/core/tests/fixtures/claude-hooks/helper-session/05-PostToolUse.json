@@ -1,0 +1,23 @@
+{
+  "session_id": "f7bde299-0a6c-42a0-b983-f4bb5e257e44",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/f7bde299-0a6c-42a0-b983-f4bb5e257e44.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "f44ac025-e512-4a57-8dbd-4cc8247e6cf5",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "ToolSearch",
+  "tool_input": {
+    "query": "select:TodoWrite,TaskCreate,TaskUpdate",
+    "max_results": 3
+  },
+  "tool_response": {
+    "matches": [],
+    "query": "select:TodoWrite,TaskCreate,TaskUpdate",
+    "total_deferred_tools": 30
+  },
+  "tool_use_id": "toolu_01N1JFWTMKrg3XacL4GQ25Aw",
+  "duration_ms": 1
+}

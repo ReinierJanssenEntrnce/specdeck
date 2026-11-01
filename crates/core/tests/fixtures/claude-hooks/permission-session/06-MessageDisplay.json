@@ -1,0 +1,12 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "804bff52-254a-4122-af44-c813caf4017e",
+  "hook_event_name": "MessageDisplay",
+  "turn_id": "9238e128-3efd-4810-a3a4-fa58f1957aa7",
+  "message_id": "cd8f8778-b66c-4525-9488-06968f9cf695",
+  "index": 0,
+  "final": true,
+  "delta": "I ran `mkdir allowed-dir` and it completed with no output, so the folder should now exist in the working directory."
+}

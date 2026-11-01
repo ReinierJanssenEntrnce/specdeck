@@ -1,0 +1,9 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "c389446f-8829-4f02-b66d-3579c5c86539",
+  "hook_event_name": "Notification",
+  "message": "Claude needs your permission",
+  "notification_type": "permission_prompt"
+}

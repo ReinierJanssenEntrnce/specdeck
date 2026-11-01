@@ -18,6 +18,22 @@ With the terminal hidden, a line at the bottom of the conversation says what the
 
 The host's terminal is always shown, because the host types into it; the host can still choose summary or details for the steps. Sessions with OpenCode, omp or a plain terminal have no steps to show, so the terminal stays shown there, with a note why.
 
+## When Claude asks the host
+
+Claude Code sometimes stops to ask the host something. The timeline shows what was asked and what the host decided, in both summary and details:
+
+| When Claude | You see |
+|---|---|
+| Asks a question with options | *Asked: Which database? → Postgres*. Select it to see every option, with the host's choice marked, and anything the host typed or noted |
+| Proposes a plan | *Proposed a plan* while it waits, then *Plan approved* or *Plan rejected*. Select it to read the plan. A rejected plan is usually followed by a revised one |
+| Needs permission to run a tool | The step is marked *Allowed by the host* or *Denied by the host*. A denial shows once the host types their next prompt |
+| Hands work to a helper | Select *Asked a helper: …* to read what the helper reported back, also when it worked in the background and finished later |
+| Updates its to-do list | Select *Updated its to-do list* to see the list, each item marked to do, in progress or done |
+
+While Claude waits for an answer or for a plan to be approved, the line at the bottom of the conversation says so.
+
+You only see these decisions: answering questions and approving plans stays with the host. Viewers on an older SpecDeck version see the steps without the decisions.
+
 ## Read the session
 
 | To | Do this |
