@@ -6,7 +6,7 @@ mod terminal;
 mod tray;
 mod viewer;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -408,6 +408,28 @@ fn profile_dir(base: PathBuf) -> PathBuf {
     }
 }
 
+/// Removes the files of sessions that ended with a crash or a quit: their output log holds
+/// everything the terminal printed, and is meant to live only as long as its session (design
+/// decision 4). Runs at start, when no session of this profile can be running.
+fn remove_leftover_session_files(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if ["session-", "hooks-", "statusline-", "snapshots-"]
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
+        {
+            let path = entry.path();
+            let _ = if path.is_dir() {
+                std::fs::remove_dir_all(&path)
+            } else {
+                std::fs::remove_file(&path)
+            };
+        }
+    }
+}
+
 /// The `SPECDECK_PROFILE` of a debug build, unless it is the default one.
 fn test_profile() -> Option<String> {
     std::env::var("SPECDECK_PROFILE")
@@ -686,6 +708,7 @@ pub fn run() {
         .setup(|app| {
             let config_dir = profile_dir(app.path().app_config_dir()?);
             let data_dir = profile_dir(app.path().app_cache_dir()?).join("sessions");
+            remove_leftover_session_files(&data_dir);
             let settings_path = config_dir.join("settings.json");
             let environment = Arc::new(OnceLock::new());
             let background = environment.clone();
@@ -800,6 +823,23 @@ mod tests {
         );
         assert!(!terminal.has_timeline);
         assert!(agents[..agents.len() - 1].iter().all(|agent| !agent.installed));
+    }
+
+    #[test]
+    fn removes_what_earlier_sessions_left_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["session-a1.log", "hooks-b2.json", "statusline-c3.sh", "notes.txt"] {
+            std::fs::write(dir.path().join(name), "secret output").unwrap();
+        }
+        std::fs::create_dir_all(dir.path().join("snapshots-d4/objects")).unwrap();
+        remove_leftover_session_files(dir.path());
+        let left: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(left, ["notes.txt"]);
+        // A folder that does not exist yet is fine.
+        remove_leftover_session_files(&dir.path().join("missing"));
     }
 
     #[test]
