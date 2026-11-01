@@ -3,26 +3,26 @@
 ## ADDED Requirements
 
 ### Requirement: Readable questions
-A question Claude asked the host SHALL be shown, in both summary and details, as its questions with every option listed (with the option's description), the host's choice highlighted, and any typed answer or notes shown as text. With summary steps, its line SHALL name the first question and, once answered, its answer.
+A question Claude asked the host SHALL be shown opened, without the viewer having to open it, in both summary and details, as its questions with every option listed (with the option's description), the host's choice highlighted, and any typed answer or notes shown as text. With summary steps, its line SHALL name the first question and, once answered, its answer.
 
 #### Scenario: Summary viewer sees an answered question
 - **WHEN** Claude asked "Which database?" and the host picked "Postgres"
-- **THEN** a summary viewer sees the line "Asked: Which database? → Postgres", which opens to both options with "Postgres" highlighted
+- **THEN** a summary viewer sees the line "Asked: Which database? → Postgres" with both options below it and "Postgres" highlighted
 
 #### Scenario: Several questions in one call
 - **WHEN** Claude asked two questions at once and the host answered both
-- **THEN** the opened step lists both questions, each with its options and its answer
+- **THEN** the step lists both questions, each with its options and its answer
 
 #### Scenario: Waiting for the answer
 - **WHEN** Claude has asked a question that the host has not answered yet
 - **THEN** the step shows the options with none highlighted, and the live line says Claude waits for the host's answer to that question
 
 ### Requirement: Readable plan approval
-A plan Claude asked the host to approve SHALL be shown as formatted Markdown, marked as waiting, approved or rejected. With summary steps, its line SHALL read "Proposed a plan" while waiting, then "Plan approved" or "Plan rejected".
+A plan Claude asked the host to approve SHALL be shown opened, as formatted Markdown, marked as waiting, approved or rejected. With summary steps, its line SHALL read "Proposed a plan" while waiting, then "Plan approved" or "Plan rejected".
 
 #### Scenario: Plan rejected
 - **WHEN** the host rejected a plan and Claude then presented a revised one, which the host approved
-- **THEN** a summary viewer sees "Plan rejected" followed by "Plan approved", each opening to its formatted plan
+- **THEN** a summary viewer sees "Plan rejected" followed by "Plan approved", each with its formatted plan below it
 
 ### Requirement: Visible permission decisions
 A tool the host had to allow SHALL show on its entry, in both summary and details, whether the host allowed or denied it. A denied tool SHALL read as denied by the host, not only as "did not run".

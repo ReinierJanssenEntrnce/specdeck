@@ -88,6 +88,13 @@ async function open(name: RegExp) {
   return summary.parentElement!;
 }
 
+/** A step that is shown opened, without clicking it. */
+function shown(name: RegExp) {
+  const step = screen.getByText(name).closest('details')!;
+  expect(step).toHaveAttribute('open');
+  return step;
+}
+
 describe('host interactions', () => {
   it('summarises what the host decided', () => {
     panel('summary');
@@ -105,9 +112,9 @@ describe('host interactions', () => {
     expect(screen.getByRole('status')).toHaveTextContent("Waiting for the host's answer: Which database?");
   });
 
-  it('shows every option with the host’s picks, typed answer and notes', async () => {
+  it('shows every option with the host’s picks, typed answer and notes', () => {
     panel('summary');
-    const step = await open(/→ Postgres/);
+    const step = shown(/→ Postgres/);
     const database = within(step).getByRole('group', { name: 'Which database?' });
     expect(within(database).getAllByRole('listitem').map((li) => [li.textContent, li.getAttribute('aria-current')])).toEqual([
       ['Postgres (chosen)Relational, robust', 'true'],
@@ -119,19 +126,19 @@ describe('host interactions', () => {
     expect(features).toHaveTextContent('Typed by the host: Audit log');
   });
 
-  it('shows an open question as waiting, with no pick', async () => {
+  it('shows an open question as waiting, with no pick', () => {
     panel('summary');
-    const step = await open(/^Asked: Which database\?$/);
+    const step = shown(/^Asked: Which database\?$/);
     expect(within(step).queryAllByRole('listitem', { current: true })).toEqual([]);
     expect(step).toHaveTextContent("Waiting for the host's answer.");
   });
 
-  it('shows plans formatted, with the decision', async () => {
+  it('shows plans formatted, with the decision', () => {
     panel('summary');
-    const rejected = await open(/Plan rejected/);
+    const rejected = shown(/Plan rejected/);
     expect(within(rejected).getByRole('heading', { name: 'Plan: hello.txt' })).toBeInTheDocument();
     expect(rejected).toHaveTextContent('Rejected');
-    expect(await open(/Plan approved/)).toHaveTextContent('Approved');
+    expect(shown(/Plan approved/)).toHaveTextContent('Approved');
   });
 
   it('shows a to-do list as a checklist and a helper report formatted', async () => {
@@ -147,6 +154,16 @@ describe('host interactions', () => {
     expect(helper).toHaveTextContent('The report was cut to its first 200 KB.');
   });
 
+  it('shows questions and plans opened in details too, and folds the rest', () => {
+    panel('details');
+    const opened = (text: string) => screen.getAllByText(text, { selector: '.tool .name' }).map((name) => name.closest('details')!.hasAttribute('open'));
+    expect(opened('AskUserQuestion')).toEqual([true, true]);
+    expect(opened('ExitPlanMode')).toEqual([true, true]);
+    expect(opened('TodoWrite')).toEqual([false]);
+    expect(opened('Agent')).toEqual([false]);
+    expect(opened('Bash')).toEqual([false, false]);
+  });
+
   it('marks the denied tool in details too', () => {
     panel('details');
     const denied = screen.getByText('rm -rf build').closest('summary')!;
@@ -156,7 +173,7 @@ describe('host interactions', () => {
 
   it('is accessible', async () => {
     panel('details');
-    for (const summary of document.querySelectorAll('summary')) await userEvent.click(summary);
+    for (const details of document.querySelectorAll('details:not([open])')) await userEvent.click(details.querySelector('summary')!);
     const results = await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } });
     expect(results.violations.flatMap((v) => v.nodes.map((n) => v.id + ' ' + n.target.join(' ')))).toEqual([]);
   });
