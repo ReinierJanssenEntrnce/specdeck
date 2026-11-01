@@ -316,7 +316,7 @@ button { font: inherit; color: inherit; }
 
 .tool { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .tool summary {
-  list-style: none; display: grid; grid-template-columns: 16px auto minmax(0, 1fr) auto; gap: 8px; align-items: center;
+  list-style: none; display: grid; grid-template-columns: 16px auto minmax(0, 1fr) auto auto; gap: 8px; align-items: center;
   padding: 6px 9px; cursor: pointer; font-size: 12.5px;
 }
 .tool summary::-webkit-details-marker { display: none; }
@@ -489,3 +489,34 @@ html.translucent .workspace > .side { background: color-mix(in srgb, var(--surfa
 .step-row { display: flex; align-items: flex-start; gap: 8px; }
 .step-row > .step { flex: 1 1 auto; min-width: 0; }
 .step-row > .btn { flex: 0 0 auto; margin-top: 2px; }
+.step.denied > summary .state, .step.denied > summary .status-icon { color: var(--danger); }
+
+/* What the host decided, and what helpers reported (HostInteractions). */
+.hint { margin: 0; font-size: 12px; color: var(--text-muted); }
+.permission { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 9px; font-size: 11px; white-space: nowrap; }
+.permission svg { width: 12px; height: 12px; }
+.permission.allowed { background: var(--ok-soft); color: var(--ok); }
+.permission.denied { background: var(--danger-soft); color: var(--danger); }
+.questions { display: grid; gap: 10px; }
+.question { display: grid; gap: 5px; }
+.question-text { margin: 0; font-weight: 600; font-size: 12.5px; }
+.options { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.options li { display: flex; align-items: flex-start; gap: 7px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; }
+.options li svg, .option-mark { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+.option-mark { border: 1.5px solid var(--text-faint); border-radius: 50%; box-sizing: border-box; }
+.options li.picked { border-color: var(--ok); background: var(--ok-soft); }
+.options li.picked svg { color: var(--ok); }
+.option-label { font-weight: 600; }
+.option-description { display: block; color: var(--text-muted); font-size: 12px; }
+.typed { margin: 0; font-size: 12.5px; }
+.plan-view, .report { display: grid; gap: 6px; }
+.decision { justify-self: start; padding: 1px 8px; border-radius: 9px; font-size: 11px; font-weight: 600; }
+.decision.approved { background: var(--ok-soft); color: var(--ok); }
+.decision.rejected { background: var(--danger-soft); color: var(--danger); }
+.decision.waiting { background: var(--working-soft); color: var(--working); }
+.todo-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 12.5px; }
+.todo-list li { display: flex; align-items: flex-start; gap: 7px; }
+.todo-list svg { width: 14px; height: 14px; flex: none; margin-top: 2px; color: var(--text-faint); }
+.todo-list li.in-progress svg { color: var(--working); }
+.todo-list li.completed { color: var(--text-muted); text-decoration: line-through; }
+.todo-list li.completed svg { color: var(--ok); }

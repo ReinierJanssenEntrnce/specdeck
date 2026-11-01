@@ -61,6 +61,34 @@ export const demoTimeline: TimelineEvent[] = [
   { ...at(1), kind: 'message', promptId: 'p1', messageId: 'm1', text: "I'll look at how the routes are set up first.", final: true },
   { ...at(1), kind: 'tool-call', promptId: 'p1', toolUseId: 't1', toolName: 'Read', input: { file_path: 'src/routes/index.ts' } },
   { ...at(1), kind: 'tool-result', promptId: 'p1', toolUseId: 't1', status: 'succeeded' },
+  {
+    ...at(1),
+    kind: 'tool-call',
+    promptId: 'p1',
+    toolUseId: 'q1',
+    toolName: 'AskUserQuestion',
+    input: {
+      questions: [
+        {
+          question: 'What should /health return when the database is down?',
+          header: 'Status',
+          options: [
+            { label: '503 Service Unavailable', description: 'Load balancers take the node out of rotation' },
+            { label: '200 with database: "down"', description: 'Always up; the body says what is wrong' },
+          ],
+          multiSelect: false,
+        },
+      ],
+    },
+  },
+  {
+    ...at(1),
+    kind: 'tool-result',
+    promptId: 'p1',
+    toolUseId: 'q1',
+    status: 'succeeded',
+    outcome: { kind: 'answers', answers: [{ question: 'What should /health return when the database is down?', selected: ['503 Service Unavailable'] }] },
+  },
   { ...at(1), kind: 'file-read', promptId: 'p1', toolUseId: 't1', path: 'src/routes/index.ts' },
   { ...at(2), kind: 'tool-call', promptId: 'p1', toolUseId: 't2', toolName: 'Write', input: { file_path: 'src/routes/health.ts' } },
   { ...at(2), kind: 'tool-result', promptId: 'p1', toolUseId: 't2', status: 'succeeded' },
@@ -111,7 +139,7 @@ export const demoTimeline: TimelineEvent[] = [
     ],
   },
   { ...at(3), kind: 'tool-call', promptId: 'p1', toolUseId: 't4', toolName: 'Bash', input: { command: 'npm test -- health', description: 'Run the health tests' } },
-  { ...at(3), kind: 'tool-result', promptId: 'p1', toolUseId: 't4', status: 'failed', error: 'Exit code 1: no test files match "health"' },
+  { ...at(3), kind: 'tool-result', promptId: 'p1', toolUseId: 't4', status: 'failed', error: 'Exit code 1: no test files match "health"', permission: 'allowed' },
   {
     ...at(3),
     kind: 'response',

@@ -27,7 +27,7 @@ pub const HOOK_TOKEN_ENV: &str = "SPECDECK_HOOK_TOKEN";
 
 /// The hook events the timeline is built from. `SessionStart` is not among them: it supports
 /// only command and MCP tool hooks, and the engine knows when it started Claude Code.
-pub const HOOK_EVENTS: [&str; 8] = [
+pub const HOOK_EVENTS: [&str; 9] = [
     "SessionEnd",
     "Notification",
     "UserPromptSubmit",
@@ -36,6 +36,8 @@ pub const HOOK_EVENTS: [&str; 8] = [
     "PostToolUse",
     "PostToolUseFailure",
     "Stop",
+    // A helper finished; a helper that ran in the background reports back only here.
+    "SubagentStop",
 ];
 
 /// Events that take a tool matcher.

@@ -1,0 +1,17 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "ee74190b-f1df-4b43-80f9-7f357dfd34fb",
+  "permission_mode": "plan",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/home/user/.claude/plans/plan-to-create-a-parsed-stardust.md",
+    "content": "# Plan: create hello.txt\n\n## Context\nThe user wants a file `hello.txt` containing \"hi\" in the working directory.\n\n## Steps\n1. Create `hello.txt` in the working directory with the content `hi`.\n\n## Verification\n- Read `hello.txt` and confirm it contains `hi`.\n"
+  },
+  "tool_use_id": "toolu_01DH4cgg1FjzCKTvvFkbtRfT"
+}

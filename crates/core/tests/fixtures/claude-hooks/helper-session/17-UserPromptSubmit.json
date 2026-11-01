@@ -1,0 +1,9 @@
+{
+  "session_id": "f7bde299-0a6c-42a0-b983-f4bb5e257e44",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/f7bde299-0a6c-42a0-b983-f4bb5e257e44.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "ea3c5285-d023-4eff-a454-acca7b7451c9",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "<task-notification>\n<task-id>a17e3222b6082330c</task-id>\n<tool-use-id>toolu_01Kb24EVcQFkD1n9KmH55fWP</tool-use-id>\n<output-file>/tmp/claude/-workspace-project/f7bde299-0a6c-42a0-b983-f4bb5e257e44/tasks/a17e3222b6082330c.output</output-file>\n<status>completed</status>\n<summary>Agent \"Count the files here\" finished</summary>\n<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>\n<result>- **Files:** 1\n- **Folders:** 1</result>\n<usage><subagent_tokens>25740</subagent_tokens><tool_uses>1</tool_uses><duration_ms>13412</duration_ms></usage>\n</task-notification>"
+}

@@ -1,0 +1,9 @@
+{
+  "session_id": "f7bde299-0a6c-42a0-b983-f4bb5e257e44",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/f7bde299-0a6c-42a0-b983-f4bb5e257e44.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "ea3c5285-d023-4eff-a454-acca7b7451c9",
+  "hook_event_name": "Notification",
+  "message": "Claude is waiting for your input",
+  "notification_type": "idle_prompt"
+}

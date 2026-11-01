@@ -1,0 +1,20 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "ee74190b-f1df-4b43-80f9-7f357dfd34fb",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "ExitPlanMode",
+  "tool_input": {},
+  "tool_response": {
+    "plan": "# Plan: create greeting.txt\n\n## Context\nThe user wants a file `greeting.txt` containing \"hi\" in the working directory.\n\n## Steps\n1. Create `greeting.txt` in the working directory with the content `hi`.\n\n## Verification\n- Read `greeting.txt` and confirm it contains `hi`.\n",
+    "isAgent": false,
+    "filePath": "/home/user/.claude/plans/plan-to-create-a-parsed-stardust.md"
+  },
+  "tool_use_id": "toolu_01VQZ3Cu3mx5ATkr5d362ke9",
+  "duration_ms": 0
+}

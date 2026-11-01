@@ -1,0 +1,12 @@
+{
+  "session_id": "f7bde299-0a6c-42a0-b983-f4bb5e257e44",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/f7bde299-0a6c-42a0-b983-f4bb5e257e44.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "ea3c5285-d023-4eff-a454-acca7b7451c9",
+  "hook_event_name": "MessageDisplay",
+  "turn_id": "ec5edae0-5783-4d07-96cb-c366de788aa2",
+  "message_id": "d858d386-06c6-4f8d-a9ec-5022941f3381",
+  "index": 0,
+  "final": true,
+  "delta": "The current folder contains 1 file and 1 folder. I couldn't record the to-do list because no task-tracking tool is available in this session."
+}

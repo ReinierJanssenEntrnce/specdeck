@@ -1,0 +1,15 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "804bff52-254a-4122-af44-c813caf4017e",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "I ran `mkdir allowed-dir` and it completed with no output, so the folder should now exist in the working directory.",
+  "background_tasks": [],
+  "session_crons": []
+}

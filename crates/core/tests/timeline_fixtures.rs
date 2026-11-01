@@ -5,7 +5,9 @@ use std::path::Path;
 use serde_json::Value;
 use specdeck_core::hooks::{HOOK_EVENTS, HookPayload};
 use specdeck_core::timeline::TimelineBuilder;
-use specdeck_protocol::timeline::{DiffHunk, Entry, FileChangeKind, ToolStatus};
+use specdeck_protocol::timeline::{
+    Answer, DiffHunk, Entry, FileChangeKind, Permission, ToolOutcome, ToolStatus,
+};
 
 /// The payloads of one recorded session, in order, without events the engine does not register.
 fn payloads(session: &str) -> Vec<HookPayload> {
@@ -152,5 +154,115 @@ fn successful_read_is_a_touched_file_outside_paths_stay_absolute() {
     let sibling = builder.handle(read("/workspace/project-other/a.txt")).unwrap();
     assert!(
         matches!(&sibling[1], Entry::FileRead { path, .. } if path == "/workspace/project-other/a.txt")
+    );
+}
+
+/// What one result of a call said.
+type Said = (ToolStatus, Option<ToolOutcome>, Option<Permission>);
+
+/// Each call's tool name with what its results said, in call order; a call can have two results.
+fn results(entries: &[Entry]) -> Vec<(String, Vec<Said>)> {
+    let mut calls: Vec<(String, String, Vec<_>)> = Vec::new();
+    for entry in entries {
+        match entry {
+            Entry::ToolCall { tool_use_id, tool_name, .. } => {
+                calls.push((tool_use_id.clone(), tool_name.clone(), Vec::new()));
+            }
+            Entry::ToolResult { tool_use_id, status, outcome, permission, .. } => {
+                let call = calls.iter_mut().find(|(id, ..)| id == tool_use_id).unwrap();
+                call.2.push((*status, outcome.clone(), *permission));
+            }
+            _ => {}
+        }
+    }
+    calls.into_iter().map(|(_, name, results)| (name, results)).collect()
+}
+
+fn answer(question: &str, selected: &[&str], typed: Option<&str>) -> Answer {
+    Answer {
+        question: question.into(),
+        selected: selected.iter().map(|s| (*s).into()).collect(),
+        typed: typed.map(Into::into),
+        notes: None,
+    }
+}
+
+#[test]
+fn question_session() {
+    let entries = replay("question-session");
+    let answers = ToolOutcome::Answers {
+        answers: vec![
+            answer("Which database?", &["Postgres"], None),
+            answer("Which features?", &["Auth", "Export"], Some("Audit log")),
+        ],
+    };
+    assert_eq!(
+        results(&entries),
+        [
+            // Questions ask for permission to show their dialog; that is not a permission decision.
+            ("AskUserQuestion".into(), vec![(ToolStatus::Succeeded, Some(answers), None)]),
+            // The host dismissed the second question, which ends the prompt without any event.
+            ("AskUserQuestion".into(), vec![(ToolStatus::NotRun, None, None)]),
+        ]
+    );
+    // The dismissed question is closed when the next prompt starts, before that prompt.
+    let closed = entries.iter().rposition(|e| matches!(e, Entry::ToolResult { .. })).unwrap();
+    assert!(
+        matches!(&entries[closed + 1], Entry::Prompt { text, .. } if text == "Reply with just: ok")
+    );
+}
+
+#[test]
+fn plan_session() {
+    let plans: Vec<_> = results(&replay("plan-session"))
+        .into_iter()
+        .filter(|(name, _)| name == "ExitPlanMode")
+        .collect();
+    let decision = |approved| Some(ToolOutcome::PlanDecision { approved });
+    assert_eq!(
+        plans,
+        [
+            // Rejected: the call gets no result, and is still open at the end of the prompt.
+            ("ExitPlanMode".into(), vec![(ToolStatus::NotRun, decision(false), None)]),
+            ("ExitPlanMode".into(), vec![(ToolStatus::Succeeded, decision(true), None)]),
+        ]
+    );
+}
+
+#[test]
+fn permission_session() {
+    let entries = replay("permission-session");
+    assert_eq!(
+        results(&entries),
+        [
+            ("Bash".into(), vec![(ToolStatus::Succeeded, None, Some(Permission::Allowed))]),
+            ("Bash".into(), vec![(ToolStatus::NotRun, None, Some(Permission::Denied))]),
+        ]
+    );
+}
+
+#[test]
+fn helper_session() {
+    let report =
+        ToolOutcome::Report { text: "- **Files:** 1\n- **Folders:** 1".into(), truncated: false };
+    let calls: Vec<_> = results(&replay("helper-session"))
+        .into_iter()
+        .filter(|(name, _)| name != "ToolSearch")
+        .collect();
+    assert_eq!(
+        calls,
+        [
+            // Started in the background; the report follows when the helper finishes. The internal
+            // agent's `SubagentStop` before it adds nothing.
+            (
+                "Agent".into(),
+                vec![
+                    (ToolStatus::Succeeded, None, None),
+                    (ToolStatus::Succeeded, Some(report), None),
+                ]
+            ),
+            // The helper's own command, which the host allowed.
+            ("Bash".into(), vec![(ToolStatus::Succeeded, None, Some(Permission::Allowed))]),
+        ]
     );
 }

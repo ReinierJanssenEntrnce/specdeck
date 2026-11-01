@@ -1,0 +1,15 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "760ffa66-addf-49b1-a6b2-12893eb3dd17",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "Database: Postgres. Features: Auth, Export, Audit log.",
+  "background_tasks": [],
+  "session_crons": []
+}

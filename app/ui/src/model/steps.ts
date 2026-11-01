@@ -3,7 +3,8 @@
 
 import type { NoticeItem, TextItem, ToolItem, ToolStatus, Turn } from './timeline';
 
-export type Outcome = 'running' | 'succeeded' | 'failed' | 'not-run';
+/** `denied`: the host did not allow it, or rejected the plan it presented. */
+export type Outcome = 'running' | 'succeeded' | 'failed' | 'not-run' | 'denied';
 
 export interface Step {
   kind: 'step';
@@ -49,6 +50,8 @@ export function planChangeOf(path: string): string | null {
 function outcome(tools: ToolItem[]): Outcome {
   const statuses = new Set<ToolStatus>(tools.map((t) => t.status));
   if (statuses.has('running')) return 'running';
+  const rejected = (t: ToolItem) => t.outcome?.kind === 'plan-decision' && !t.outcome.approved;
+  if (tools.some((t) => t.permission === 'denied' || rejected(t))) return 'denied';
   if (statuses.has('failed')) return 'failed';
   if (statuses.size === 1 && statuses.has('not-run')) return 'not-run';
   return 'succeeded';
@@ -101,16 +104,25 @@ function line(tools: ToolItem[], key: string | null, seenPlans: Set<string>): St
     const description = text(first, 'description');
     if (!description) return { ...base, label: 'Ran a command', live: 'running a command' };
     const [past, ing] = tenses(description);
-    return { ...base, label: base.outcome === 'running' ? upperFirst(ing) : past, live: ing };
+    // A command that never ran keeps the description as given, rather than saying it was done.
+    const ran = base.outcome === 'succeeded' || base.outcome === 'failed';
+    return { ...base, label: base.outcome === 'running' ? upperFirst(ing) : ran ? past : description, live: ing };
   }
   if (SUBAGENTS.has(first.toolName)) {
     const description = text(first, 'description') || 'a task';
     return { ...base, label: `Asked a helper: ${description}`, live: `working with a helper on: ${lowerFirst(description)}` };
   }
   if (first.toolName === 'AskUserQuestion') {
-    const questions = first.input.questions;
-    const question = Array.isArray(questions) && typeof questions[0]?.question === 'string' ? (questions[0].question as string) : 'a question';
-    return { ...base, label: `Asked: ${question}`, live: `asking: ${question}` };
+    const question = firstQuestion(first) ?? 'a question';
+    const answers = first.outcome?.kind === 'answers' ? first.outcome.answers : [];
+    const answer = answers[0] ? [...answers[0].selected, answers[0].typed ?? ''].filter(Boolean).join(', ') : '';
+    const more = answers.length > 1 ? ` +${answers.length - 1}` : '';
+    return { ...base, label: answer ? `Asked: ${question} → ${answer}${more}` : `Asked: ${question}`, live: `asking: ${question}` };
+  }
+  if (first.toolName === 'ExitPlanMode') {
+    const decided = first.outcome?.kind === 'plan-decision' ? first.outcome : null;
+    const label = decided ? (decided.approved ? 'Plan approved' : 'Plan rejected') : 'Proposed a plan';
+    return { ...base, label, live: 'proposing a plan' };
   }
   if (first.toolName === 'TodoWrite') return { ...base, label: 'Updated its to-do list', live: 'updating its to-do list' };
   return { ...base, label: `Used ${first.toolName}`, live: `using ${first.toolName}` };
@@ -146,12 +158,22 @@ export function summarize(turn: Turn, seenPlans: Set<string>): SummaryEntry[] {
   return entries;
 }
 
+/** The first question an `AskUserQuestion` call asks. */
+function firstQuestion(tool: ToolItem): string | null {
+  const questions = tool.input.questions;
+  return Array.isArray(questions) && typeof questions[0]?.question === 'string' ? (questions[0].question as string) : null;
+}
+
 /** What the agent does right now, for viewers without the terminal; null when it is not busy. */
 export function liveLine(turn: Turn, seenPlans: Set<string>, agentName: string): string | null {
-  const last = turn.items.at(-1);
-  if (last?.kind === 'notice') return `Waiting for the host: ${last.text}`;
   const running = summarize(turn, new Set(seenPlans))
     .filter((entry): entry is Step => entry.kind === 'step')
     .findLast((step) => step.outcome === 'running');
+  // A question or a plan raises the same notice as a permission prompt; say what it waits for.
+  const tool = running?.tools[0];
+  if (tool?.toolName === 'AskUserQuestion') return `Waiting for the host's answer: ${firstQuestion(tool) ?? 'a question'}`;
+  if (tool?.toolName === 'ExitPlanMode') return 'Waiting for the host to approve the plan';
+  const last = turn.items.at(-1);
+  if (last?.kind === 'notice') return `Waiting for the host: ${last.text}`;
   return running ? `${agentName} is ${running.live}` : null;
 }

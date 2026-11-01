@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Check, CircleSlash, Hand, History, Loader, X } from 'lucide-react';
+import { AlertTriangle, Ban, Check, CircleSlash, Hand, History, Loader, X } from 'lucide-react';
 import type { TimelineModel, ToolItem, Turn } from '../model/timeline';
 import { toolSummary } from '../model/timeline';
 import { liveLine, summarize, type Step, type SummaryEntry } from '../model/steps';
@@ -7,6 +7,7 @@ import type { Steps } from '../api/types';
 import { DiffView } from './DiffView';
 import { formatTokens } from '../model/statusbar';
 import { Markdown } from './Markdown';
+import { interactionBody, PermissionBadge } from './HostInteractions';
 
 interface Props {
   model: TimelineModel;
@@ -167,7 +168,7 @@ function LiveLine({ turn, plansBefore, agentName }: { turn: Turn; plansBefore: S
   );
 }
 
-const OUTCOME_ICON = { running: Loader, succeeded: Check, failed: X, 'not-run': CircleSlash } as const;
+const OUTCOME_ICON = { running: Loader, succeeded: Check, failed: X, 'not-run': CircleSlash, denied: Ban } as const;
 
 /** One summary line; opens to the tool calls it stands for. A plan step also offers to read it. */
 function StepView({ step, onJump, onReadPlan }: { step: Step; onJump: (seq: number) => void; onReadPlan?: (change: string, paths: string[]) => void }) {
@@ -178,6 +179,7 @@ function StepView({ step, onJump, onReadPlan }: { step: Step; onJump: (seq: numb
       <summary onClick={() => onJump(step.tools[0]!.outputSeq)}>
         <Icon className="status-icon" aria-hidden />
         <span className="what">{step.label}</span>
+        {step.outcome !== 'denied' && step.tools.some((item) => item.permission === 'allowed') && <PermissionBadge permission="allowed" />}
         <span className="state">{STATUS_TEXT[step.outcome]}</span>
       </summary>
       <div className="step-body">
@@ -248,7 +250,7 @@ function TurnView({
   );
 }
 
-const STATUS_TEXT = { running: 'Running', succeeded: 'Done', failed: 'Failed', 'not-run': 'Did not run' } as const;
+const STATUS_TEXT = { running: 'Running', succeeded: 'Done', failed: 'Failed', 'not-run': 'Did not run', denied: 'Denied by the host' } as const;
 
 function ToolView({ item, onJump }: { item: ToolItem; onJump: (seq: number) => void }) {
   const Icon = { running: Loader, succeeded: Check, failed: X, 'not-run': CircleSlash }[item.status];
@@ -260,15 +262,14 @@ function ToolView({ item, onJump }: { item: ToolItem; onJump: (seq: number) => v
         <span className="what" title={toolSummary(item)}>
           {toolSummary(item)}
         </span>
+        <PermissionBadge permission={item.permission} />
         <span className="state">{STATUS_TEXT[item.status]}</span>
       </summary>
       <div className="tool-body">
         {item.error && <div className="error-text selectable">{item.error}</div>}
-        {item.changes.length > 0 ? (
-          item.changes.map((change, i) => <DiffView key={i} change={change} />)
-        ) : (
-          <pre className="tool-input selectable">{JSON.stringify(item.input, null, 2)}</pre>
-        )}
+        {item.changes.length > 0
+          ? item.changes.map((change, i) => <DiffView key={i} change={change} />)
+          : (interactionBody(item) ?? <pre className="tool-input selectable">{JSON.stringify(item.input, null, 2)}</pre>)}
       </div>
     </details>
   );

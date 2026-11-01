@@ -1,0 +1,12 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "c15a68cb-d0ad-4f3e-8230-c52ce56138f2",
+  "hook_event_name": "MessageDisplay",
+  "turn_id": "744bf8bc-0363-4a13-8a22-0553b639bb65",
+  "message_id": "ecdfff14-de8d-49c4-b4bb-1a48dcea9d0b",
+  "index": 0,
+  "final": true,
+  "delta": "ok"
+}

@@ -171,6 +171,8 @@ mod tests {
             tool_use_id: "t".into(),
             status: specdeck_protocol::timeline::ToolStatus::Succeeded,
             error: None,
+            outcome: None,
+            permission: None,
         };
         assert_eq!(activity.on_entries(&[ran]), [Change::Status(AgentStatus::Working)]);
     }

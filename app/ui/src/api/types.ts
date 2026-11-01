@@ -105,6 +105,25 @@ export interface TokenCounts {
   cacheWrite: number;
 }
 
+/** The host's answer to one question; empty when they did not answer. */
+export interface Answer {
+  question: string;
+  /** The labels of the options the host picked. */
+  selected: string[];
+  /** What the host typed instead of, or besides, picking options. */
+  typed?: string;
+  notes?: string;
+}
+
+/** What the host decided, or what a helper reported, for a call. */
+export type ToolOutcome =
+  | { kind: 'answers'; answers: Answer[] }
+  | { kind: 'plan-decision'; approved: boolean }
+  | { kind: 'report'; text: string; truncated: boolean };
+
+/** Whether the host allowed a call Claude Code asked them about. */
+export type Permission = 'allowed' | 'denied';
+
 export type TimelineEvent = Stamp &
   (
     | { kind: 'session-started' }
@@ -113,7 +132,15 @@ export type TimelineEvent = Stamp &
     | { kind: 'message'; promptId: string; messageId: string; text: string; final: boolean }
     | { kind: 'response'; promptId: string; text: string }
     | { kind: 'tool-call'; promptId: string; toolUseId: string; toolName: string; input: Record<string, unknown> }
-    | { kind: 'tool-result'; promptId: string; toolUseId: string; status: 'succeeded' | 'failed' | 'not-run'; error?: string }
+    | {
+        kind: 'tool-result';
+        promptId: string;
+        toolUseId: string;
+        status: 'succeeded' | 'failed' | 'not-run';
+        error?: string;
+        outcome?: ToolOutcome;
+        permission?: Permission;
+      }
     | { kind: 'file-change'; promptId: string; toolUseId: string; path: string; change: 'created' | 'edited' | 'deleted'; hunks: DiffHunk[] }
     | { kind: 'file-read'; promptId: string; toolUseId: string; path: string }
     | { kind: 'attention'; message: string }

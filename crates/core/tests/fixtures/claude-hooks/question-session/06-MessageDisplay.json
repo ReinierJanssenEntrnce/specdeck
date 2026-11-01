@@ -1,0 +1,12 @@
+{
+  "session_id": "19120650-384e-4630-a827-2698609f1ecb",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/19120650-384e-4630-a827-2698609f1ecb.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "760ffa66-addf-49b1-a6b2-12893eb3dd17",
+  "hook_event_name": "MessageDisplay",
+  "turn_id": "281f0d8d-05a7-438f-922c-ad25b8742ddd",
+  "message_id": "fb78f7ed-79c7-41eb-80e1-07a61cdaafb5",
+  "index": 0,
+  "final": true,
+  "delta": "Database: Postgres. Features: Auth, Export, Audit log."
+}

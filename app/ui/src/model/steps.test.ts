@@ -109,3 +109,60 @@ describe('plan files', () => {
     expect(planChangeOf('openspec/specs/a/spec.md')).toBeNull();
   });
 });
+
+describe('host interactions', () => {
+  const questions = [
+    { question: 'Which database?', options: [{ label: 'Postgres' }, { label: 'SQLite' }] },
+    { question: 'Which features?', multiSelect: true, options: [{ label: 'Auth' }, { label: 'Export' }] },
+  ];
+  const asked = (status: ToolStatus, outcome?: ToolItem['outcome']) => ({ ...tool('AskUserQuestion', { questions }, status), outcome });
+
+  it('names the first question and its answer, and how many more there were', () => {
+    const answers = [
+      { question: 'Which database?', selected: ['Postgres'] },
+      { question: 'Which features?', selected: ['Auth'], typed: 'Audit log' },
+    ];
+    const [answered, waiting, dismissed] = steps([
+      asked('succeeded', { kind: 'answers', answers }),
+      asked('running'),
+      asked('not-run'),
+    ]);
+    expect(answered!.label).toBe('Asked: Which database? → Postgres +1');
+    expect(waiting!.label).toBe('Asked: Which database?');
+    expect([dismissed!.label, dismissed!.outcome]).toEqual(['Asked: Which database?', 'not-run']);
+    const typed = steps([asked('succeeded', { kind: 'answers', answers: [{ question: 'Which database?', selected: [], typed: 'MySQL' }] })]);
+    expect(typed[0]!.label).toBe('Asked: Which database? → MySQL');
+  });
+
+  it('says whether a plan was approved or rejected', () => {
+    const plan = (status: ToolStatus, approved?: boolean) => ({
+      ...tool('ExitPlanMode', { plan: '# Plan' }, status),
+      outcome: approved === undefined ? undefined : ({ kind: 'plan-decision', approved } as const),
+    });
+    expect(steps([plan('running'), plan('not-run', false), plan('succeeded', true)]).map((s) => [s.label, s.outcome])).toEqual([
+      ['Proposed a plan', 'running'],
+      ['Plan rejected', 'denied'],
+      ['Plan approved', 'succeeded'],
+    ]);
+  });
+
+  it('marks a command the host denied', () => {
+    const denied = { ...tool('Bash', { description: 'Delete the build folder' }, 'not-run'), permission: 'denied' as const };
+    const allowed = { ...tool('Bash', { description: 'Run the test suite' }), permission: 'allowed' as const };
+    expect(steps([denied, allowed]).map((s) => [s.label, s.outcome])).toEqual([
+      ['Delete the build folder', 'denied'],
+      ['Ran the test suite', 'succeeded'],
+    ]);
+  });
+
+  it('waits for the host instead of a permission while a question or plan is open', () => {
+    const notice = { kind: 'notice', id: 'n', text: 'Claude needs your permission', outputSeq: 9 } as const;
+    expect(liveLine(turn([asked('running'), notice]), new Set(), 'Claude')).toBe("Waiting for the host's answer: Which database?");
+    expect(liveLine(turn([tool('ExitPlanMode', { plan: 'x' }, 'running'), notice]), new Set(), 'Claude')).toBe(
+      'Waiting for the host to approve the plan',
+    );
+    expect(liveLine(turn([tool('Bash', { description: 'Run it' }, 'running'), notice]), new Set(), 'Claude')).toBe(
+      'Waiting for the host: Claude needs your permission',
+    );
+  });
+});
