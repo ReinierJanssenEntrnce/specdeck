@@ -1,12 +1,13 @@
 # SpecDeck built from source: the UI with pnpm, the app with Cargo through the Tauri hook, which
 # also installs the .desktop file (with the specdeck:// handler) and the icons.
 #
-# The sharing service is baked in at build time; override `signallingUrl` for your team, or set
+# The sharing service is baked in at build time: the public one, as in the release builds. Override
+# `signallingUrl` for your team (null leaves it to the app's own default), or set
 # SPECDECK_SIGNALLING_URL when starting the app.
 {
   lib,
   src,
-  signallingUrl ? null,
+  signallingUrl ? "wss://specdeck.hartj.es/signal",
   rustPlatform,
   cargo-tauri,
   nodejs,

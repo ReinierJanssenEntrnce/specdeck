@@ -18,7 +18,7 @@ How to use the app: [docs/user-guide.md](docs/user-guide.md). What the app does 
 | Windows | `SpecDeck-x64-setup.exe` from [Releases](https://github.com/nickhartjes/specdeck/releases) |
 | Linux | `nix run github:nickhartjes/specdeck` (builds from source, x86_64 and aarch64), or the AppImage or `.deb` from [Releases](https://github.com/nickhartjes/specdeck/releases) |
 
-With Nix, add it to a system or home configuration through the flake's `packages.<system>.specdeck` or `overlays.default`. Builds from source use the sharing service set at build time; override it with `specdeck.override { signallingUrl = "wss://…/signal"; }`, or set `SPECDECK_SIGNALLING_URL` when starting the app.
+With Nix, add it to a system or home configuration through the flake's `packages.<system>.specdeck` or `overlays.default`. The Nix package uses the public sharing service, `wss://specdeck.hartj.es/signal`, like the release builds; override it with `specdeck.override { signallingUrl = "wss://…/signal"; }`, or set `SPECDECK_SIGNALLING_URL` when starting the app.
 
 Releases built before the signing certificates are in place are unsigned, so the system warns on first launch. On macOS, allow SpecDeck once under System Settings > Privacy & Security (Open Anyway), or run `xattr -dr com.apple.quarantine /Applications/SpecDeck.app`; the Homebrew cask says the same when it installs an unsigned release. On Windows, choose More info > Run anyway in the SmartScreen prompt.
 
