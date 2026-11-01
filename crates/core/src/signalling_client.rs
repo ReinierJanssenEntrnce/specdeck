@@ -2,8 +2,16 @@
 
 use futures_util::{SinkExt, StreamExt};
 use specdeck_protocol::signalling::{ClientMessage, ServerMessage};
+use std::time::Duration;
+
 use tokio::sync::mpsc;
+use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::Message;
+
+/// How often a quiet connection is pinged. A host's connection carries nothing for most of a
+/// session, and proxies in front of the service close quiet connections (Envoy after 5 minutes,
+/// Cloudflare after 100 seconds).
+const KEEPALIVE: Duration = Duration::from_secs(30);
 
 /// Sends messages to the signalling service. Dropping it closes the connection.
 #[derive(Clone)]
@@ -29,9 +37,18 @@ pub async fn connect(
     let (in_tx, in_rx) = mpsc::unbounded_channel();
 
     tokio::spawn(async move {
-        while let Some(message) = out_rx.recv().await {
-            let text = serde_json::to_string(&message).expect("client messages always encode");
-            if sink.send(Message::Text(text.into())).await.is_err() {
+        let mut keepalive = tokio::time::interval_at(Instant::now() + KEEPALIVE, KEEPALIVE);
+        loop {
+            let message = tokio::select! {
+                message = out_rx.recv() => match message {
+                    Some(message) => Message::Text(
+                        serde_json::to_string(&message).expect("client messages always encode").into(),
+                    ),
+                    None => break,
+                },
+                _ = keepalive.tick() => Message::Ping(Default::default()),
+            };
+            if sink.send(message).await.is_err() {
                 break;
             }
         }
@@ -49,4 +66,26 @@ pub async fn connect(
         }
     });
     Ok((SignallingSender(out_tx), in_rx))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::net::TcpListener;
+
+    #[tokio::test(start_paused = true)]
+    async fn pings_a_quiet_connection() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}/signal", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            socket.next().await.unwrap().unwrap()
+        });
+        let (_sender, _receiver) = connect(&url).await.unwrap();
+        let started = Instant::now();
+        let message = server.await.unwrap();
+        assert!(matches!(message, Message::Ping(_)), "got {message:?}");
+        assert!(started.elapsed() >= KEEPALIVE - Duration::from_secs(1));
+    }
 }
