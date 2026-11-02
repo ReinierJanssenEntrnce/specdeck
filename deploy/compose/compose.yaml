@@ -39,7 +39,7 @@ services:
     depends_on: [signalling]
 
   coturn:
-    image: coturn/coturn:4.7
+    image: coturn/coturn:4.18
     restart: unless-stopped
     # TURN hands out the server's own address and relay ports, so it uses the host's network
     # rather than a published port per relay port.
