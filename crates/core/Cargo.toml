@@ -30,6 +30,6 @@ libc = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }
-base64 = "0.22"
+base64 = "0.23"
 specdeck-signalling = { path = "../signalling" }
 env_logger = "0.11"
