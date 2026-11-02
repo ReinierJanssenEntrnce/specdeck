@@ -34,7 +34,7 @@ export interface TerminalHandle {
 }
 
 interface Props {
-  /** The host's terminal fits its pane and takes input; a viewer's keeps the host's size and scales its text to the pane. */
+  /** The host's terminal fits its pane and takes input; a viewer's keeps the host's size, scales its text to the pane's width and keeps the cursor in sight. */
   mode: 'host' | 'viewer';
   onData?: (data: string) => void;
   onResize?: (cols: number, rows: number) => void;
@@ -60,7 +60,7 @@ const PALETTE_DARK = {
 const FONT_SIZE = 13;
 /** The range a viewer's text is scaled in to fit the host's terminal in its pane. */
 const MIN_VIEWER_FONT = 6;
-const MAX_VIEWER_FONT = 24;
+const MAX_VIEWER_FONT = 48;
 /** Room kept for the scrollbar beside a viewer's scaled terminal. */
 const SCROLLBAR_ROOM = 12;
 
@@ -182,27 +182,57 @@ export const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalV
       fitNow();
     } else {
       // A viewer's terminal keeps the host's columns and rows, so its text is scaled instead:
-      // the font grows or shrinks until the host's whole terminal fits the pane.
+      // the font grows or shrinks until the host's columns fill the pane's width. Rows that do
+      // not fit scroll, with the cursor kept in sight.
       const screen = element.querySelector<HTMLElement>('.xterm-screen');
+      const pane = element.parentElement;
+      // The pane width and host size the font was last chosen for. Cells are rounded to whole
+      // pixels, so a font chosen from a measurement can come out a little off; only a new width
+      // or host size may grow it again, or it could swing between two sizes for ever.
+      let chosenFor = '';
       const scaleToPane = () => {
-        if (!screen) return;
+        if (!screen || !pane) return;
+        // Measured on the pane, which a scrollbar in the terminal does not narrow.
         const style = getComputedStyle(element);
-        const width = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - SCROLLBAR_ROOM;
-        const height = element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
-        const drawn = screen.getBoundingClientRect();
-        if (width <= 0 || height <= 0 || !drawn.width || !drawn.height) return;
+        const width = pane.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - SCROLLBAR_ROOM;
+        const drawn = screen.getBoundingClientRect().width;
+        if (width <= 0 || !drawn) return;
         const current = term.options.fontSize ?? FONT_SIZE;
-        const wanted = current * Math.min(width / drawn.width, height / drawn.height);
-        const size = Math.min(MAX_VIEWER_FONT, Math.max(MIN_VIEWER_FONT, Math.floor(wanted * 4) / 4));
-        if (Math.abs(size - current) >= 0.25) term.options.fontSize = size;
+        const key = `${width} ${term.cols}x${term.rows}`;
+        let size: number;
+        if (key !== chosenFor) {
+          chosenFor = key;
+          size = (current * width) / drawn;
+        } else if (drawn > width) {
+          size = current - 0.25;
+        } else {
+          return;
+        }
+        size = Math.min(MAX_VIEWER_FONT, Math.max(MIN_VIEWER_FONT, Math.floor(size * 4) / 4));
+        if (size !== current) term.options.fontSize = size;
       };
+      // Scrolls the pane just enough to show the cursor's line, while the viewer follows the
+      // live output; the conversation sits above the cursor in agents such as Claude Code.
+      const showCursor = () => {
+        if (!screen || !following.current) return;
+        const box = element.getBoundingClientRect();
+        const drawn = screen.getBoundingClientRect();
+        const rowHeight = drawn.height / term.rows;
+        const top = drawn.top - box.top + element.scrollTop + term.buffer.active.cursorY * rowHeight;
+        if (top + rowHeight > element.scrollTop + element.clientHeight) element.scrollTop = top + rowHeight - element.clientHeight;
+        else if (top < element.scrollTop) element.scrollTop = top;
+      };
+      disposables.push(term.onCursorMove(showCursor), term.onResize(() => requestAnimationFrame(showCursor)));
       let pending: number | undefined;
       resizeObserver = new ResizeObserver(() => {
         window.clearTimeout(pending);
-        pending = window.setTimeout(scaleToPane, 60);
+        pending = window.setTimeout(() => {
+          scaleToPane();
+          requestAnimationFrame(showCursor);
+        }, 60);
       });
       // The pane changes with the window; the drawn terminal changes with the host's size.
-      resizeObserver.observe(element);
+      if (pane) resizeObserver.observe(pane);
       if (screen) resizeObserver.observe(screen);
     }
 

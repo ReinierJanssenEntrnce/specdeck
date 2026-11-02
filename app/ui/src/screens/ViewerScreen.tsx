@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, Eye, LogOut, WifiOff } from 'lucide-react';
 import { errorMessage, useBridge } from '../api/bridge';
 import type { AgentId, AgentStatus, EndReason, Participant, TimelineEvent, View, ViewEvent } from '../api/types';
@@ -89,10 +89,12 @@ interface Props {
   onLeave: (retry?: { code: string; server?: string; message: string }) => void;
   /** The sharing service of a join link the user agreed to join through; their own when unset. */
   server?: string;
+  /** Shown in the toolbar when a new SpecDeck is ready to install. */
+  update?: ReactNode;
 }
 
 /** Watching someone else's session, read-only. */
-export function ViewerScreen({ code, server, view, onView, onLeave }: Props) {
+export function ViewerScreen({ code, server, view, onView, onLeave , update }: Props) {
   const bridge = useBridge();
   const [asking, setAsking] = useState(view === null);
   const shown = view ?? DEVELOPER_VIEW;
@@ -160,6 +162,7 @@ export function ViewerScreen({ code, server, view, onView, onLeave }: Props) {
         {state.phase !== 'joining' && state.phase !== 'ended' && <StatusPill status={state.status} agentName={AGENT_NAMES[state.agent ?? 'claude-code']} terminal={terminal} request={state.timelineSupported ? null : state.request} />}
         {state.phase === 'ended' && <span className="pill ended">Ended</span>}
         <div className="spacer" />
+        {update}
         <ViewMenu view={shown} onChange={onView} onAskAgain={() => setAsking(true)} />
         <button className="btn" onClick={leave}>
           <LogOut aria-hidden /> Leave

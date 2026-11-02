@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, Copy, Link2, Power, RefreshCw } from 'lucide-react';
 import { errorMessage, useBridge } from '../api/bridge';
 import type { AgentId, AgentStatus, HostEvent, Participant, SharingState, TimelineEvent, View } from '../api/types';
@@ -82,9 +82,11 @@ interface Props {
   view: View | null;
   onView: (view: View) => void;
   onEnded: () => void;
+  /** Shown in the toolbar when a new SpecDeck is ready to install. */
+  update?: ReactNode;
 }
 
-export function HostScreen({ view, onView, onEnded }: Props) {
+export function HostScreen({ view, onView, onEnded , update }: Props) {
   const bridge = useBridge();
   const workspace = useRef<WorkspaceHandle>(null);
   const [state, dispatch] = useReducer(hostReducer, initial);
@@ -149,6 +151,7 @@ export function HostScreen({ view, onView, onEnded }: Props) {
         </div>
         <StatusPill status={state.status} agentName={agentName} terminal={terminal} request={state.timelineSupported ? null : state.request} />
         <div className="spacer" />
+        {update}
         <ViewMenu host view={view ?? DEVELOPER_VIEW} onChange={onView} />
         <InviteCode
           sharing={state.sharing}

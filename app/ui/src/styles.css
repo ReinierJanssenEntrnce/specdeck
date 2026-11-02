@@ -107,6 +107,15 @@ button { font: inherit; color: inherit; }
 .btn.ghost:hover { background: var(--hover); }
 .btn.small { height: 26px; padding: 0 8px; font-size: 12px; }
 .btn.icon { width: 30px; padding: 0; }
+
+/* A new SpecDeck is ready (App, UpdateNotice): a slim bar above the start screen. */
+.update-notice {
+  position: fixed; top: 34px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 10px;
+  max-width: calc(100vw - 32px); padding: 5px 6px 5px 12px; border: 1px solid var(--border-strong); border-radius: 10px;
+  background: var(--surface); box-shadow: var(--shadow); font-size: 13px;
+}
+.update-notice > svg { width: 15px; height: 15px; flex: none; color: var(--accent); }
+.update-notice .btn.icon { width: 26px; height: 26px; }
 .btn.large { height: 38px; padding: 0 18px; font-size: 14px; }
 .btn svg { width: 15px; height: 15px; flex: none; }
 
