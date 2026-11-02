@@ -266,3 +266,52 @@ fn helper_session() {
         ]
     );
 }
+
+/// The notices that Claude waits for the host, in order.
+fn notices(entries: &[Entry]) -> Vec<&str> {
+    entries
+        .iter()
+        .filter_map(|entry| match entry {
+            Entry::Attention { message } => Some(message.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn permission_requests_name_the_action_once() {
+    assert_eq!(
+        notices(&replay("permission-session")),
+        [
+            "Claude wants to use Bash: mkdir allowed-dir",
+            "Claude wants to use Bash: mkdir denied-dir"
+        ]
+    );
+    assert_eq!(
+        notices(&replay("question-session")),
+        ["Claude asks: Which database? (and 1 more)", "Claude asks: Which color?"]
+    );
+    assert_eq!(
+        notices(&replay("plan-session")),
+        [
+            "Claude has a plan for you to review",
+            "Claude has a plan for you to review",
+            "Claude wants to use Write: greeting.txt",
+        ]
+    );
+    // A helper's command: the request is for the helper's call.
+    let helper = replay("helper-session");
+    assert_eq!(notices(&helper).len(), 1);
+    assert!(notices(&helper)[0].starts_with("Claude wants to use Bash: echo \"files: "));
+}
+
+#[test]
+fn manual_compact_is_for_the_engine() {
+    let payloads = payloads("compact-session");
+    let compact: Vec<Option<bool>> =
+        payloads.iter().map(specdeck_core::timeline::manual_compact).collect();
+    assert_eq!(compact, [None, None, Some(true), Some(false), None]);
+    // Compaction adds no entries of its own.
+    let kinds: Vec<String> = replay("compact-session").iter().map(kind).collect();
+    assert_eq!(kinds, ["prompt", "response", "session-ended"]);
+}

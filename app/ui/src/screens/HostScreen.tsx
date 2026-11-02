@@ -8,6 +8,7 @@ import { StatusBar } from '../components/StatusBar';
 import { DEVELOPER_VIEW, ViewMenu } from '../components/ViewMenu';
 import { useMenu } from '../menu/menu';
 import { statusBarInfo } from '../model/statusbar';
+import { nextRequest, requestIn } from '../model/request';
 import { Toast, useToast } from '../components/Toast';
 import { formatCode, joinLink } from '../model/code';
 import { Workspace, type WorkspaceHandle } from './Workspace';
@@ -27,6 +28,8 @@ interface State {
   viewerLimit: number;
   exited: number | null;
   timeline: TimelineEvent[];
+  /** What the agent waits on, if it does. */
+  request: string | null;
 }
 
 const initial: State = {
@@ -41,20 +44,21 @@ const initial: State = {
   viewerLimit: 20,
   exited: null,
   timeline: [],
+  request: null,
 };
 
 export function hostReducer(state: State, event: HostEvent | { type: 'limit'; limit: number }): State {
   switch (event.type) {
     case 'snapshot':
-      return { ...state, ...event, timeline: event.timeline };
+      return { ...state, ...event, timeline: event.timeline, request: requestIn(event.timeline, event.status) };
     case 'sharing':
       return { ...state, sharing: event.state, code: event.code ?? (event.state === 'connecting' ? null : state.code) };
     case 'participants':
       return { ...state, participants: event.participants };
     case 'status':
-      return { ...state, status: event.status };
+      return { ...state, status: event.status, request: nextRequest(state.request, event) };
     case 'timeline':
-      return { ...state, timeline: [...state.timeline, event.event] };
+      return { ...state, timeline: [...state.timeline, event.event], request: nextRequest(state.request, event) };
     case 'exited':
       return { ...state, exited: event.code, status: 'exited' };
     case 'limit':
@@ -145,7 +149,7 @@ export function HostScreen({ view, onView, onEnded , update }: Props) {
             {agentName} · {state.folder}
           </span>
         </div>
-        <StatusPill status={state.status} agentName={agentName} terminal={terminal} />
+        <StatusPill status={state.status} agentName={agentName} terminal={terminal} request={state.timelineSupported ? null : state.request} />
         <div className="spacer" />
         {update}
         <ViewMenu host view={view ?? DEVELOPER_VIEW} onChange={onView} />

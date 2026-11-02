@@ -61,6 +61,19 @@ describe('accessibility', () => {
     expect(await violations()).toEqual([]);
   });
 
+  it('viewer screen, an agent waiting on a request', async () => {
+    window.history.pushState({}, '', '/?agent=omp');
+    try {
+      app('start');
+      await userEvent.type(await screen.findByLabelText('Invite code'), '7K2M9QXH4TPA');
+      await userEvent.click(screen.getByRole('button', { name: /Join/ }));
+      await waitFor(() => expect(screen.getByText(/approve Write/)).toBeInTheDocument(), { timeout: 2000 });
+      expect(await violations()).toEqual([]);
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
+
   it('dialogs and search', async () => {
     app('host');
     await screen.findByText('7K2M-9QXH-4TPA');

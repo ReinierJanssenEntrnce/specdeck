@@ -199,6 +199,7 @@ button { font: inherit; color: inherit; }
   background: var(--surface-sunken); color: var(--text-muted);
 }
 .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill .pill-request { font-weight: 450; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
 .pill.working { background: var(--working-soft); color: var(--working); }
 .pill.working .dot { animation: pulse 1.2s ease-in-out infinite; }
 .pill.waiting { background: var(--ok-soft); color: var(--ok); }

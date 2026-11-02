@@ -150,6 +150,39 @@ describe('viewer screen', () => {
     expect(screen.getByText('Shell exited')).toBeInTheDocument();
   });
 
+  it('shows what an agent without a timeline waits on, until it goes on', () => {
+    setup();
+    act(() => {
+      emit({ type: 'joined', viewerId: 2, agent: 'omp', timelineSupported: false, cols: 100, rows: 30 });
+      emit({ type: 'timeline', event: { outputSeq: 0, at: 1, kind: 'attention', message: 'omp needs permission: approve Write: src/main.rs' } });
+      emit({ type: 'status', status: 'waiting' });
+    });
+    expect(screen.getByRole('status', { name: 'omp needs permission: approve Write: src/main.rs' })).toHaveTextContent('Waiting for input: omp needs permission: approve Write: src/main.rs');
+    act(() => emit({ type: 'status', status: 'working' }));
+    expect(screen.getByText('omp is working')).toBeInTheDocument();
+    // Done, with no new request: the old one is not shown again.
+    act(() => emit({ type: 'status', status: 'waiting' }));
+    expect(screen.getByText('Waiting for input').closest('.pill')).not.toHaveTextContent('approve');
+  });
+
+  it('shows a program in a terminal session working, then live again', () => {
+    setup();
+    act(() => {
+      emit({ type: 'joined', viewerId: 2, agent: 'terminal', timelineSupported: false, cols: 100, rows: 30 });
+      emit({ type: 'status', status: 'working' });
+    });
+    expect(screen.getByText('Working').closest('.pill')).toBeInTheDocument();
+    act(() => emit({ type: 'status', status: 'unknown' }));
+    expect(screen.getByText('Live')).toBeInTheDocument();
+  });
+
+  it('leaves the request to the timeline for Claude Code', () => {
+    setup();
+    join();
+    act(() => emit({ type: 'timeline', event: { outputSeq: 0, at: 1, kind: 'attention', message: 'Claude wants to use Bash: ls' } }));
+    expect(screen.getByText('Waiting for input').closest('.pill')).toHaveTextContent(/^Waiting for input$/);
+  });
+
   it('shows no usage for an agent without a timeline', () => {
     setup();
     act(() => {

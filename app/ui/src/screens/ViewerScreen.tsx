@@ -6,6 +6,7 @@ import { StatusPill } from '../components/StatusPill';
 import { StatusBar } from '../components/StatusBar';
 import { DEVELOPER_VIEW, FirstJoinDialog, ViewMenu } from '../components/ViewMenu';
 import { statusBarInfo } from '../model/statusbar';
+import { nextRequest } from '../model/request';
 import { formatCode } from '../model/code';
 import { AGENT_NAMES } from './HostScreen';
 import { Workspace, type WorkspaceHandle } from './Workspace';
@@ -44,6 +45,8 @@ interface State {
   participants: Participant[];
   status: AgentStatus;
   timeline: TimelineEvent[];
+  /** What the agent waits on, if it does. */
+  request: string | null;
 }
 
 const initial: State = {
@@ -55,6 +58,7 @@ const initial: State = {
   participants: [],
   status: 'unknown',
   timeline: [],
+  request: null,
 };
 
 export function viewerReducer(state: State, event: ViewEvent): State {
@@ -66,11 +70,11 @@ export function viewerReducer(state: State, event: ViewEvent): State {
     case 'reconnected':
       return { ...state, phase: 'live' };
     case 'timeline':
-      return { ...state, timeline: [...state.timeline, event.event] };
+      return { ...state, timeline: [...state.timeline, event.event], request: nextRequest(state.request, event) };
     case 'participants':
       return { ...state, participants: event.participants };
     case 'status':
-      return { ...state, status: event.status };
+      return { ...state, status: event.status, request: nextRequest(state.request, event) };
     case 'ended':
       return { ...state, phase: 'ended', ended: event.reason };
   }
@@ -155,7 +159,7 @@ export function ViewerScreen({ code, server, view, onView, onLeave , update }: P
         <span className="pill readonly" title="Only the host can type in this session">
           <Eye size={13} aria-hidden /> Read-only
         </span>
-        {state.phase !== 'joining' && state.phase !== 'ended' && <StatusPill status={state.status} agentName={AGENT_NAMES[state.agent ?? 'claude-code']} terminal={terminal} />}
+        {state.phase !== 'joining' && state.phase !== 'ended' && <StatusPill status={state.status} agentName={AGENT_NAMES[state.agent ?? 'claude-code']} terminal={terminal} request={state.timelineSupported ? null : state.request} />}
         {state.phase === 'ended' && <span className="pill ended">Ended</span>}
         <div className="spacer" />
         {update}
