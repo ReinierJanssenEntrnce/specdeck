@@ -28,7 +28,7 @@ The app already uses Tauri plugins for dialogs, notifications, deep links and wi
 
 ### 2. The update key pair is separate from OS signing
 
-`pnpm tauri signer generate` makes a key pair. The public key goes into `tauri.conf.json` (`plugins.updater.pubkey`) and is committed; the private key and its password become the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Losing the private key means installed apps can no longer verify updates and must be updated by hand once, so it is stored outside the repository by the maintainer as well.
+`pnpm tauri signer generate` makes a key pair. The public key goes into `tauri.conf.json` (`plugins.updater.pubkey`) and is committed; the private key and its password become the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Losing the private key means installed apps can no longer verify updates and must be updated by hand once, so it is stored outside the repository as well: the key and its password go into the maintainer's Bitwarden vault, written there with the Bitwarden CLI straight from the generated files, without being printed.
 
 ### 3. Update files only when the key is there
 
@@ -90,8 +90,8 @@ The state lives in the app state and is sent to the windows as an `update-change
 
 ## Migration Plan
 
-1. Generate the key pair, commit the public key, set the two secrets.
-2. Ship the release that contains the updater (1.1.0). Apps before it cannot update themselves; users install it by hand once (the release notes say so).
+1. Generate the key pair, store the private key and password in Bitwarden, commit the public key, set the two secrets.
+2. Ship the release that contains the updater (1.2.0; 1.1.0 came out without it). Apps before it cannot update themselves; users install it by hand once (the release notes say so).
 3. From the next release on, installed apps update themselves.
 
 Rollback: removing `latest.json` from the latest release stops all update offers without a new build.

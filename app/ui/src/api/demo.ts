@@ -31,6 +31,8 @@ export const demoProfile: Profile = {
   builtInService: 'wss://specdeck.hartj.es/signal',
   serviceOverridden: false,
   inSession: false,
+  updatesItself: true,
+  checkUpdates: true,
 };
 
 export const demoParticipants: Participant[] = [
@@ -208,6 +210,11 @@ export function demoBridge(screen: string): Bridge {
     getProfile: async () => profile,
     setUsername: async (username) => ({ ...profile, username }),
     setNotifications: async (notifications) => ({ ...profile, notifications }),
+    setCheckUpdates: async (checkUpdates) => ({ ...profile, checkUpdates }),
+    // The start screen shows an update that is ready to install.
+    updateStatus: async () => (screen === 'start' ? { state: 'ready', version: '1.2.1' } : { state: 'idle' }),
+    onUpdate: () => () => {},
+    restartToUpdate: async () => {},
     setView: async (view) => ({ ...profile, view }),
     setSharingService: async (service) => {
       const url = service.trim() ? `wss://${service.trim()}/signal` : null;
@@ -247,13 +254,27 @@ export function demoBridge(screen: string): Bridge {
     joinSession: async (_code, _server, terminal: TerminalSink, events: (event: ViewEvent) => void) => {
       setTimeout(() => {
         // ?cols=&rows= sets the host's terminal size, for trying how a viewer scales it.
-        const size = new URLSearchParams(location.search);
-        const cols = Number(size.get('cols')) || 100;
-        const rows = Number(size.get('rows')) || 32;
-        events({ type: 'joined', viewerId: 2, agent: 'claude-code', timelineSupported: true, cols, rows });
-        events({ type: 'participants', participants: demoParticipants });
-        events({ type: 'status', status: 'working' });
-        for (const event of demoTimeline) events({ type: 'timeline', event });
+        const params = new URLSearchParams(location.search);
+        const cols = Number(params.get('cols')) || 100;
+        const rows = Number(params.get('rows')) || 32;
+        // ?agent=omp shows an agent that reports a request; ?agent=terminal a terminal session
+        // with a program that reports it is working.
+        const agent = params.get('agent');
+        if (agent === 'omp' || agent === 'terminal') {
+          events({ type: 'joined', viewerId: 2, agent, timelineSupported: false, cols, rows });
+          events({ type: 'participants', participants: demoParticipants });
+          if (agent === 'omp') {
+            events({ type: 'timeline', event: { ...at(1), kind: 'attention', message: 'omp needs permission: approve Write: src/routes/health.ts' } });
+            events({ type: 'status', status: 'waiting' });
+          } else {
+            events({ type: 'status', status: 'working' });
+          }
+        } else {
+          events({ type: 'joined', viewerId: 2, agent: 'claude-code', timelineSupported: true, cols, rows });
+          events({ type: 'participants', participants: demoParticipants });
+          events({ type: 'status', status: 'working' });
+          for (const event of demoTimeline) events({ type: 'timeline', event });
+        }
         // A viewer takes the host's size from the stream's resize records, as from the engine.
         terminal(resizeRecord(cols, rows));
         terminal(terminalStream());

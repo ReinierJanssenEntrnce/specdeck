@@ -38,6 +38,30 @@ describe('settings window', () => {
   });
 });
 
+describe('update setting', () => {
+  it('is on by default and turns off at once', async () => {
+    const bridge = fakeBridge();
+    renderWith(bridge, <SettingsScreen />);
+    const toggle = await screen.findByRole('checkbox', { name: 'Updates' });
+    expect(toggle).toBeChecked();
+    await userEvent.click(toggle);
+    expect(bridge.setCheckUpdates).toHaveBeenCalledWith(false);
+    await waitFor(() => expect(toggle).not.toBeChecked());
+  });
+
+  it('shows when it is off', async () => {
+    renderWith(fakeBridge('start', { getProfile: async () => ({ ...demoProfile, checkUpdates: false }) }), <SettingsScreen />);
+    expect(await screen.findByRole('checkbox', { name: 'Updates' })).not.toBeChecked();
+  });
+
+  it('is not offered on installs that do not update themselves', async () => {
+    renderWith(fakeBridge('start', { getProfile: async () => ({ ...demoProfile, updatesItself: false }) }), <SettingsScreen />);
+    await screen.findByRole('checkbox', { name: 'Notifications' });
+    expect(screen.queryByRole('checkbox', { name: 'Updates' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/update/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('sharing service setting', () => {
   const field = () => screen.findByLabelText('Sharing service');
 

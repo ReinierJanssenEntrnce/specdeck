@@ -5,7 +5,7 @@
 //! signalling service cannot substitute its own fingerprint and read the traffic, or replay a
 //! description into another connection.
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
@@ -92,6 +92,14 @@ mod tests {
 
     fn key() -> [u8; 32] {
         InviteCode::parse("7K2M-9QXH-4TPA").unwrap().keys().auth_key
+    }
+
+    #[test]
+    fn tag_is_stable_across_versions() {
+        // Computed independently (Python hmac and hashlib), so apps of different versions keep
+        // accepting each other's descriptions.
+        let signed = SignedDescription::sign(&key(), "conn-1", DescriptionKind::Offer, SDP.into());
+        assert_eq!(signed.mac, "64d21c1794849a7128e32e11b29e8f8900d560bf969cfc66a3468c9ca5acacc5");
     }
 
     #[test]

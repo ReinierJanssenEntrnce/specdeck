@@ -1,0 +1,15 @@
+{
+  "session_id": "5b0c6f1e-2f4a-4f39-9a51-0d7f3c2e8a11",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/5b0c6f1e-2f4a-4f39-9a51-0d7f3c2e8a11.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "7585f8a1-f5c9-470a-ac0e-f1edd17d80cf",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "ok",
+  "background_tasks": [],
+  "session_crons": []
+}

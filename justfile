@@ -20,6 +20,7 @@ check:
     pnpm lint
     pnpm typecheck
     pnpm test
+    node --test 'scripts/*.test.mjs'
 
 # Measure 20 viewers' effect on the host's terminal, alone so other work does not skew it
 capacity:

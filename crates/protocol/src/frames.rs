@@ -194,6 +194,47 @@ mod tests {
     }
 
     #[test]
+    fn signatures_match_rfc_8032() {
+        // RFC 8032 section 7.1, test 1, so apps of different versions keep verifying each other's
+        // frames.
+        let unhex = |text: &str| -> Vec<u8> {
+            (0..text.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
+                .collect()
+        };
+        let secret = unhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
+        let key = SessionKey(SigningKey::from_bytes(&secret.try_into().unwrap()));
+        assert_eq!(
+            key.public_key().to_vec(),
+            unhex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
+        );
+        assert_eq!(
+            key.0.sign(b"").to_bytes().to_vec(),
+            unhex(
+                "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"
+            )
+        );
+    }
+
+    /// `encode_history` of the records in `history_from_older_apps_still_decodes`, from 1.1.0.
+    const HISTORY_1_1_0: [u8; 30] = [
+        40, 181, 47, 253, 32, 128, 173, 0, 0, 112, 2, 0, 0, 120, 104, 101, 108, 108, 111, 32, 1, 1,
+        100, 32, 1, 0, 47, 105, 65, 2,
+    ];
+
+    #[test]
+    fn history_from_older_apps_still_decodes() {
+        // A history frame as 1.1.0 compressed it (zstd level 3), so a newer zstd still reads it.
+        let records = vec![
+            Record::Output { seq: 0, bytes: b"hello ".repeat(20) },
+            Record::Resize { seq: 1, cols: 100, rows: 32 },
+        ];
+        assert_eq!(decode_history(&encode_history(&records)).unwrap(), records);
+        assert_eq!(decode_history(&HISTORY_1_1_0).unwrap(), records);
+    }
+
+    #[test]
     fn history_is_compressed() {
         let (key, _) = keys();
         let records =

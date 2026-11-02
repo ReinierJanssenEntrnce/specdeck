@@ -35,6 +35,12 @@
     "longDescription": "SpecDeck runs a coding agent (Claude Code, OpenCode or omp) on your computer while teammates follow the terminal and, for Claude Code, a timeline of prompts, tool calls and file changes."
   },
   "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGMEYwNTkwMTBCMjA0REMKUldUY0JMSVFrQVVQZnlBaEF0UEkwQzRpYXNrak8yeWhXaDB1Mk9uY0lnMUlaTVp3SmdZaVhtRjgK",
+      "endpoints": [
+        "https://github.com/nickhartjes/specdeck/releases/latest/download/latest.json"
+      ]
+    },
     "deep-link": {
       "desktop": {
         "schemes": [
