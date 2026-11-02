@@ -191,6 +191,15 @@ function terminalStream(): ArrayBuffer {
   return out.buffer;
 }
 
+/** A terminal stream record that resizes the terminal. */
+function resizeRecord(cols: number, rows: number): ArrayBuffer {
+  const record = new Uint8Array(5);
+  record[0] = 2;
+  new DataView(record.buffer).setUint16(1, cols);
+  new DataView(record.buffer).setUint16(3, rows);
+  return record.buffer;
+}
+
 export function demoBridge(screen: string): Bridge {
   const profile = { ...demoProfile, hosting: screen === 'host' };
   // Like the engine, the demo sends each resize of the host's terminal back as a record.
@@ -228,11 +237,7 @@ export function demoBridge(screen: string): Bridge {
     },
     hostInput: async () => {},
     hostResize: async (cols, rows) => {
-      const record = new Uint8Array(5);
-      record[0] = 2;
-      new DataView(record.buffer).setUint16(1, cols);
-      new DataView(record.buffer).setUint16(3, rows);
-      setTimeout(() => hostTerminal?.(record.buffer), 40);
+      setTimeout(() => hostTerminal?.(resizeRecord(cols, rows)), 40);
     },
     hostSetColors: async () => {},
     hostNewCode: async () => {},
@@ -249,6 +254,8 @@ export function demoBridge(screen: string): Bridge {
         events({ type: 'participants', participants: demoParticipants });
         events({ type: 'status', status: 'working' });
         for (const event of demoTimeline) events({ type: 'timeline', event });
+        // A viewer takes the host's size from the stream's resize records, as from the engine.
+        terminal(resizeRecord(cols, rows));
         terminal(terminalStream());
       }, 300);
     },
