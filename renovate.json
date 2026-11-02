@@ -4,6 +4,11 @@
     "config:recommended"
   ],
   "minimumReleaseAge": "1 day",
+  "lockFileMaintenance": {
+    "description": "Indirect dependencies in Cargo.lock and pnpm-lock.yaml, which no other update touches",
+    "enabled": true,
+    "schedule": ["before 4am on monday"]
+  },
   "gitIgnoredAuthors": [
     "41898282+github-actions[bot]@users.noreply.github.com"
   ],

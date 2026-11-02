@@ -16,6 +16,7 @@ use specdeck_core::session::SessionView;
 use specdeck_core::sharing::{Sharing, SharingConfig, SharingEvent};
 use specdeck_core::viewer::{CONNECT_TIMEOUT, ViewerConfig, ViewerEvent, ViewerSession};
 use specdeck_protocol::AgentId;
+use specdeck_protocol::control::PROTOCOL_VERSION;
 use tokio::net::TcpListener;
 
 const WAIT: Duration = Duration::from_secs(20);
@@ -98,6 +99,7 @@ async fn viewer_matches_host(name: &str) {
             username: "viewer".into(),
             peer: loopback(),
             connect_timeout: CONNECT_TIMEOUT,
+            protocol_version: PROTOCOL_VERSION,
         },
     );
     // The second half arrives live, a little at a time.

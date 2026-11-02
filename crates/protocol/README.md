@@ -2,7 +2,7 @@
 
 The wire protocol between a host and its viewers. Both sides use this crate; it does no I/O. Design background: decisions 7 and 8 in [`design.md`](../../openspec/changes/archive/2026-10-31-native-shared-session-mvp/design.md).
 
-Current version: `PROTOCOL_VERSION = 1` ([`src/control.rs`](src/control.rs)). Not compatible with SpecDeck 0.x.
+Current version: `PROTOCOL_VERSION = 2` ([`src/control.rs`](src/control.rs)). Version 2 added Codex, Grok and pi to the agents; postcard encodes the agent by its index, so apps that speak version 1 cannot read a `Welcome` for them. Not compatible with SpecDeck 0.x.
 
 ## Connecting
 
@@ -37,7 +37,7 @@ Viewer messages come from untrusted peers. `decode_viewer` rejects messages over
 
 | Message | Fields | Meaning |
 |---|---|---|
-| `Welcome` | `protocol_version`, `viewer_id`, `session_public_key`, `cols`, `rows`, `resume_token`, `rejoin_room`, `agent`, `timeline_supported` | Viewer admitted. `session_public_key` verifies every stream frame; `resume_token` and `rejoin_room` are for reconnecting (see below); `timeline_supported` is false for agents whose events are not captured (OpenCode, omp) |
+| `Welcome` | `protocol_version`, `viewer_id`, `session_public_key`, `cols`, `rows`, `resume_token`, `rejoin_room`, `agent`, `timeline_supported` | Viewer admitted. `session_public_key` verifies every stream frame; `resume_token` and `rejoin_room` are for reconnecting (see below); `timeline_supported` is false for agents whose events are not captured (all but Claude Code) |
 | `Refused` | `reason` | Not admitted: `ViewerOutdated`, `HostOutdated`, `SessionFull`, `Removed` or `SessionEnded`. `RefusalReason::message()` is the text to show. The host closes the connection afterwards |
 | `Participants` | `participants[]` (`id`, `username`, `role`, `label`) | Everyone in the session, on every change. `label` adds a suffix when usernames collide |
 | `Status` | `status` | `Starting`, `Working`, `Waiting`, `Exited` or `Unknown` (agents whose events are not captured) |

@@ -19,10 +19,26 @@ export const demoProfile: Profile = {
   view: null,
   translucent: false,
   agents: [
-    { id: 'claude-code', name: 'Claude Code', installed: true, hasTimeline: true },
-    { id: 'open-code', name: 'OpenCode', installed: true, hasTimeline: false },
-    { id: 'omp', name: 'omp', installed: false, hasTimeline: false },
-    { id: 'terminal', name: 'Terminal', installed: true, hasTimeline: false },
+    {
+      id: 'claude-code',
+      name: 'Claude Code',
+      installed: true,
+      hasTimeline: true,
+      reportsStatus: true,
+      path: '/Users/nick/.local/bin/claude',
+      installPage: 'https://code.claude.com/docs/en/setup',
+    },
+    {
+      id: 'open-code',
+      name: 'OpenCode',
+      installed: true,
+      hasTimeline: false,
+      reportsStatus: false,
+      path: '/opt/homebrew/bin/opencode',
+      installPage: 'https://opencode.ai/docs/',
+    },
+    { id: 'omp', name: 'omp', installed: false, hasTimeline: false, reportsStatus: true, path: null, installPage: 'https://omp.sh' },
+    { id: 'terminal', name: 'Terminal', installed: true, hasTimeline: false, reportsStatus: false, path: '/bin/zsh', installPage: null },
   ],
   hosting: false,
   platform: 'macos',
@@ -33,6 +49,7 @@ export const demoProfile: Profile = {
   inSession: false,
   updatesItself: true,
   checkUpdates: true,
+  screenReader: false,
 };
 
 export const demoParticipants: Participant[] = [
@@ -208,9 +225,15 @@ export function demoBridge(screen: string): Bridge {
   let hostTerminal: TerminalSink | null = null;
   return {
     getProfile: async () => profile,
+    agentVersions: async () => [
+      { agent: 'claude-code', version: '2.1.309' },
+      { agent: 'open-code', version: '2.2.5' },
+    ],
+    openInstallPage: async () => {},
     setUsername: async (username) => ({ ...profile, username }),
     setNotifications: async (notifications) => ({ ...profile, notifications }),
     setCheckUpdates: async (checkUpdates) => ({ ...profile, checkUpdates }),
+    setScreenReader: async (screenReader) => ({ ...profile, screenReader }),
     // The start screen shows an update that is ready to install.
     updateStatus: async () => (screen === 'start' ? { state: 'ready', version: '1.2.1' } : { state: 'idle' }),
     onUpdate: () => () => {},
@@ -253,8 +276,9 @@ export function demoBridge(screen: string): Bridge {
     hostClose: async () => {},
     joinSession: async (_code, _server, terminal: TerminalSink, events: (event: ViewEvent) => void) => {
       setTimeout(() => {
-        // ?cols=&rows= sets the host's terminal size, for trying how a viewer scales it.
-        const params = new URLSearchParams(location.search);
+        // ?cols=&rows= sets the host's terminal size, for trying how a viewer scales it. Read
+        // through globalThis: in tests the page can be gone by the time this timer fires.
+        const params = new URLSearchParams(globalThis.location?.search ?? '');
         const cols = Number(params.get('cols')) || 100;
         const rows = Number(params.get('rows')) || 32;
         // ?agent=omp shows an agent that reports a request; ?agent=terminal a terminal session

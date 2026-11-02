@@ -3,7 +3,7 @@ title: Keyboard and screen readers
 description: Use SpecDeck with the keyboard alone or with a screen reader.
 ---
 
-Everything in SpecDeck works with the keyboard alone, and every control has a name that screen readers (VoiceOver, Narrator, Orca) announce. They also read the terminal.
+Everything in SpecDeck works with the keyboard alone, and every control has a name that screen readers (VoiceOver, Narrator, Orca) announce. To have them read the terminal too, turn on **Screen reader support** in [Settings](/specdeck/guide/settings/).
 
 | To | Press |
 |---|---|

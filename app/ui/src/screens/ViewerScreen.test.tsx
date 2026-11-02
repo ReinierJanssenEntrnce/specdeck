@@ -12,14 +12,14 @@ vi.mock('../terminal/TerminalView', () => ({ TerminalView: TerminalViewStub }));
 
 let emit: (event: ViewEvent) => void = () => {};
 
-function setup(view: View | null = DEVELOPER_VIEW) {
+function setup(view: View | null = DEVELOPER_VIEW, screenReader?: boolean) {
   const bridge = fakeBridge('viewer');
   bridge.joinSession = vi.fn(async (_code, _server, _terminal, events) => {
     emit = events;
   });
   const onLeave = vi.fn();
   const onView = vi.fn();
-  renderWith(bridge, <ViewerScreen code="7K2M9QXH4TPA" view={view} onView={onView} onLeave={onLeave} />);
+  renderWith(bridge, <ViewerScreen code="7K2M9QXH4TPA" view={view} onView={onView} screenReader={screenReader} onLeave={onLeave} />);
   return { bridge, onLeave, onView };
 }
 
@@ -76,6 +76,18 @@ describe('viewer screen', () => {
     // Nothing to type into the session with.
     expect(terminal.props.mode).toBe('viewer');
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('leaves screen reader support off in the terminal unless it is turned on', () => {
+    setup();
+    join();
+    expect(terminal.props.screenReader).toBe(false);
+  });
+
+  it('turns screen reader support on in the terminal when it is set', () => {
+    setup(DEVELOPER_VIEW, true);
+    join();
+    expect(terminal.props.screenReader).toBe(true);
   });
 
   it('marks you in the participant list', async () => {

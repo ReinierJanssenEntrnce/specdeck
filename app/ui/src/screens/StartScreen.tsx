@@ -1,5 +1,19 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Folder, FolderOpen, LogIn, X } from 'lucide-react';
+import {
+  Bot,
+  Braces,
+  CodeXml,
+  ExternalLink,
+  Folder,
+  FolderOpen,
+  LogIn,
+  Pi,
+  Sparkles,
+  SquareTerminal,
+  X,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react';
 import { errorMessage, useBridge } from '../api/bridge';
 import type { AgentId, AgentInfo, Profile } from '../api/types';
 import { initials } from '../components/PeoplePanel';
@@ -155,6 +169,24 @@ function HostCard({
   const [agent, setAgent] = useState<AgentId | null>(() => defaultAgent(profile));
   const [starting, setStarting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Asked for once the screen shows: reading them can take seconds the first time.
+  const [versions, setVersions] = useState<Partial<Record<AgentId, string>>>({});
+  useEffect(() => {
+    let current = true;
+    bridge
+      .agentVersions()
+      .then((found) => {
+        if (!current) return;
+        setVersions(Object.fromEntries(found.flatMap(({ agent, version }) => (version ? [[agent, version]] : []))));
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [bridge]);
+  const installed = profile.agents.filter((info) => info.installed);
+  // Only those SpecDeck can point to an install page for; Terminal needs nothing.
+  const missing = profile.agents.filter((info) => !info.installed && info.installPage);
   // Terminal is always there; the coding agents may all be missing.
   const noCodingAgents = profile.agents.every((a) => a.id === 'terminal' || !a.installed);
 
@@ -200,13 +232,30 @@ function HostCard({
           Agent
         </span>
         <div className="agents" role="radiogroup" aria-labelledby="agent-label">
-          {profile.agents.map((info) => (
-            <AgentChoice key={info.id} info={info} selected={agent === info.id} onSelect={() => setAgent(info.id)} />
+          {installed.map((info) => (
+            <AgentChoice key={info.id} info={info} version={versions[info.id]} selected={agent === info.id} onSelect={() => setAgent(info.id)} />
           ))}
         </div>
+        {missing.length > 0 && (
+          <div className="agents-missing" role="group" aria-labelledby="agents-missing-label">
+            <span id="agents-missing-label">Not installed</span>
+            {missing.map((info) => (
+              <button
+                key={info.id}
+                className="chip"
+                onClick={() => void bridge.openInstallPage(info.id).catch((e) => setError(errorMessage(e)))}
+                aria-label={`Install page of ${info.name}`}
+                title={`How to install ${info.name}, in your browser`}
+              >
+                {info.name}
+                <ExternalLink aria-hidden />
+              </button>
+            ))}
+          </div>
+        )}
         {agent === 'terminal' && <span className="field-hint">Everyone you invite sees all output, including any secrets a command prints.</span>}
         {noCodingAgents && (
-          <span className="field-hint">No coding agent is installed. Install Claude Code, OpenCode or omp for a timeline; you can still share a terminal.</span>
+          <span className="field-hint">No coding agent is installed. Install Claude Code, OpenCode, omp, Codex, Grok or pi to share an agent; you can still share a terminal.</span>
         )}
       </div>
       {profile.recentFolders.length > 0 && (
@@ -252,19 +301,46 @@ function HostCard({
   );
 }
 
-function AgentChoice({ info, selected, onSelect }: { info: AgentInfo; selected: boolean; onSelect: () => void }) {
-  const detail = !info.installed ? 'Not installed' : info.id === 'terminal' ? 'Your shell' : info.hasTimeline ? 'Timeline and diffs' : 'Terminal only';
+const AGENT_ICONS: Partial<Record<AgentId, LucideIcon>> = {
+  'claude-code': Sparkles,
+  'open-code': Braces,
+  omp: Bot,
+  codex: CodeXml,
+  grok: Zap,
+  pi: Pi,
+  terminal: SquareTerminal,
+};
+
+/** What viewers get with an agent, in a few words. */
+function agentOffers(info: AgentInfo): string {
+  if (info.id === 'terminal') return 'Your shell';
+  const offers = [info.hasTimeline && 'Timeline, diffs and plans', info.reportsStatus && 'Status'].filter(Boolean);
+  if (offers.length === 0) return 'Terminal only';
+  return (info.hasTimeline ? offers : [...offers, 'Terminal']).join(' · ');
+}
+
+/** A path with the home folder as `~`. */
+function shortPath(path: string): string {
+  return path.replace(/^(\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)(?=[/\\]|$)/, '~');
+}
+
+function AgentChoice({ info, version, selected, onSelect }: { info: AgentInfo; version?: string; selected: boolean; onSelect: () => void }) {
+  const Icon = AGENT_ICONS[info.id] ?? Bot;
   return (
-    <button
-      className="agent"
-      role="radio"
-      aria-checked={selected}
-      disabled={!info.installed}
-      onClick={onSelect}
-      title={info.installed ? undefined : `${info.name} was not found. Install it and log in to use it.`}
-    >
-      <strong>{info.name}</strong>
-      <span>{detail}</span>
+    <button className="agent" role="radio" aria-checked={selected} onClick={onSelect} title={info.path ?? undefined}>
+      <span className="agent-radio" aria-hidden />
+      <Icon className="agent-icon" aria-hidden />
+      <span className="agent-name">
+        <strong>{info.name}</strong>
+        {version && <span className="agent-version">{version}</span>}
+      </span>
+      <span className="agent-offers">{agentOffers(info)}</span>
+      {/* bdi keeps a leading / or ~ in place while the line is cut from the start. */}
+      {info.path && (
+        <span className="agent-path">
+          <bdi>{shortPath(info.path)}</bdi>
+        </span>
+      )}
     </button>
   );
 }

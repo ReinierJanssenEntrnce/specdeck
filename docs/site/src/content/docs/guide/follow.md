@@ -16,7 +16,7 @@ Select **View** at the top of the session to change how you follow it. Your choi
 
 With the terminal hidden, a line at the bottom of the conversation says what the agent is doing right now and for how long, such as *Claude is running the test suite · 12 s*, or what it is waiting for when it needs the host.
 
-The host's terminal is always shown, because the host types into it; the host can still choose summary or details for the steps. Sessions with OpenCode, omp or a plain terminal have no steps to show, so the terminal stays shown there, with a note why.
+The host's terminal is always shown, because the host types into it; the host can still choose summary or details for the steps. Sessions with OpenCode, omp, Codex, Grok, pi or a plain terminal have no steps to show, so the terminal stays shown there, with a note why.
 
 ## When Claude asks the host
 
@@ -44,8 +44,9 @@ Next to the session's name, a label shows whether the agent is working or waitin
 |---|---|
 | Claude Code | Working or waiting, also while Claude shows the host a question or a plan, and while the host compacts its context with `/compact` |
 | omp | Working or waiting, as omp reports it. When omp needs the host, its own message is shown with the label, such as *Waiting for input: omp needs permission: approve Write: src/main.rs* |
+| Codex, Grok, pi | Working or waiting, as the agent reports it, with its message when it needs the host, such as Grok asking whether it may trust the folder |
 | OpenCode | *Live*: OpenCode does not report what it is doing |
-| Terminal | *Live*. While a program in the terminal that reports its state runs, such as Claude Code or Codex, the label shows whether that program is working or waiting, with its message when it needs the host, and goes back to *Live* when the program ends |
+| Terminal | *Live*. While a program in the terminal that reports its state runs, such as Claude Code or Codex started by hand, the label shows whether that program is working or waiting, with its message when it needs the host, and goes back to *Live* when the program ends |
 
 Agents report their state through the terminal (the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status)), so a program shows up here only if it supports it. The host is notified when an agent or program waits for them while the SpecDeck window is in the background.
 

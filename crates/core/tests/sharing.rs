@@ -12,7 +12,7 @@ use specdeck_core::session::{HostConfig, HostSession};
 use specdeck_core::sharing::{Sharing, SharingConfig, SharingEvent};
 use specdeck_core::viewer::{CONNECT_TIMEOUT, ViewerConfig, ViewerEvent, ViewerSession};
 use specdeck_protocol::AgentId;
-use specdeck_protocol::control::{Participant, RefusalReason};
+use specdeck_protocol::control::{PROTOCOL_VERSION, Participant, RefusalReason};
 use specdeck_protocol::frames::Record;
 use specdeck_protocol::invite::InviteCode;
 use tokio::net::TcpListener;
@@ -97,6 +97,16 @@ fn join(
     code: &InviteCode,
     username: &str,
 ) -> (ViewerSession, UnboundedReceiver<ViewerEvent>) {
+    join_speaking(url, code, username, PROTOCOL_VERSION)
+}
+
+/// Joins as an app that speaks `protocol_version`.
+fn join_speaking(
+    url: &str,
+    code: &InviteCode,
+    username: &str,
+    protocol_version: u32,
+) -> (ViewerSession, UnboundedReceiver<ViewerEvent>) {
     ViewerSession::join(
         code.clone(),
         ViewerConfig {
@@ -104,6 +114,7 @@ fn join(
             username: username.into(),
             peer: loopback(),
             connect_timeout: CONNECT_TIMEOUT,
+            protocol_version,
         },
     )
 }
@@ -259,6 +270,21 @@ async fn viewer_limit_refuses_new_viewers_but_keeps_joined_ones() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn apps_that_speak_another_protocol_are_told_who_needs_to_update() {
+    let url = signalling().await;
+    let mut hosted = host(&url, "nick").await;
+    let code = ready(&mut hosted.events).await;
+
+    let (_older, mut older) = join_speaking(&url, &code, "anna", PROTOCOL_VERSION - 1);
+    let event = until(&mut older, &mut Seen::default(), |_, e| e.is_final()).await;
+    assert_eq!(event, ViewerEvent::Refused(RefusalReason::ViewerOutdated));
+
+    let (_newer, mut newer) = join_speaking(&url, &code, "bob", PROTOCOL_VERSION + 1);
+    let event = until(&mut newer, &mut Seen::default(), |_, e| e.is_final()).await;
+    assert_eq!(event, ViewerEvent::Refused(RefusalReason::HostOutdated));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn sharing_becomes_available_when_the_service_comes_up() {
     // A port with nothing listening yet.
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -376,6 +402,7 @@ async fn viewer_is_told_when_no_connection_can_be_made() {
         username: "anna".into(),
         peer,
         connect_timeout: Duration::from_secs(3),
+        protocol_version: PROTOCOL_VERSION,
     };
     let started = std::time::Instant::now();
     let (_viewer, mut events) = ViewerSession::join(code, config);

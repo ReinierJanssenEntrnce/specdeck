@@ -4,7 +4,7 @@
 use serde::Serialize;
 use specdeck_core::peer::PeerConfig;
 use specdeck_core::viewer::{CONNECT_TIMEOUT, ViewerConfig, ViewerEvent, ViewerSession};
-use specdeck_protocol::control::Participant;
+use specdeck_protocol::control::{PROTOCOL_VERSION, Participant};
 use specdeck_protocol::invite::InviteCode;
 use specdeck_protocol::timeline::TimelineEvent;
 use specdeck_protocol::{AgentId, AgentStatus};
@@ -71,8 +71,13 @@ impl ViewerRuntime {
         events: Channel<ViewEvent>,
         on_ended: impl Fn(EndReason) + Send + 'static,
     ) -> Self {
-        let config =
-            ViewerConfig { signalling_url, username, peer, connect_timeout: CONNECT_TIMEOUT };
+        let config = ViewerConfig {
+            signalling_url,
+            username,
+            peer,
+            connect_timeout: CONNECT_TIMEOUT,
+            protocol_version: PROTOCOL_VERSION,
+        };
         let (session, mut viewer_events) = ViewerSession::join(code, config);
         tokio::spawn(async move {
             while let Some(event) = viewer_events.recv().await {

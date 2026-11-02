@@ -29,7 +29,7 @@ The app SHALL require a username before the user hosts or joins, and SHALL show 
 - **THEN** every other participant sees "nick" in the participant list
 
 ### Requirement: Choose a coding agent
-The host SHALL choose what a session runs: a coding agent (Claude Code, OpenCode or omp) or a plain terminal. The app SHALL show which agents are installed, preselect the choice the host used last, and not offer to start an agent that is not installed.
+The host SHALL choose what a session runs: a coding agent (Claude Code, OpenCode, omp, Codex, Grok or pi) or a plain terminal. The app SHALL show which agents are installed, preselect the choice the host used last, and not offer to start an agent that is not installed.
 
 #### Scenario: Several agents installed
 - **WHEN** Claude Code and OpenCode are installed and omp is not
@@ -42,6 +42,14 @@ The host SHALL choose what a session runs: a coding agent (Claude Code, OpenCode
 #### Scenario: Last used terminal
 - **WHEN** the host's previous session was a terminal session
 - **THEN** Terminal is preselected for the next session
+
+#### Scenario: Codex, Grok or pi
+- **WHEN** Codex is installed and the host chooses it and a folder
+- **THEN** the session runs `codex` in that folder, and viewers see the agent named Codex with its terminal and no timeline
+
+#### Scenario: Status of a new agent
+- **WHEN** a session runs an agent that reports its state through the Program Status Protocol, such as Codex
+- **THEN** participants see whether it is working or waiting, as for omp
 
 ### Requirement: Start an agent session
 When hosting, the app SHALL start the chosen agent's locally installed CLI in a terminal in a folder the host selects, using the host's existing login for that agent. The app SHALL NOT authenticate to the agent's model provider or send requests to it itself.
@@ -97,6 +105,10 @@ Only the host SHALL be able to send input to the session. Input from any other p
 #### Scenario: Input from a viewer
 - **WHEN** a message carrying terminal input arrives from a viewer
 - **THEN** the session does not receive it
+
+#### Scenario: Typed text arrives once
+- **WHEN** the host types a line longer than the terminal is wide, at any speed and with corrections by Backspace, then presses Enter
+- **THEN** the session receives each typed character once, in the order typed, and no part of the line is sent again
 
 ### Requirement: Host owns terminal size
 The session's terminal size SHALL be set by the host only. Viewer window sizes SHALL NOT change it.
@@ -167,3 +179,30 @@ When the host selects Terminal, the start screen SHALL remind the host that view
 #### Scenario: Terminal selected
 - **WHEN** the host selects Terminal on the start screen
 - **THEN** a short note says that everyone invited sees all output, including secrets a command prints, and starting a session needs no extra click
+
+### Requirement: Agent details in the picker
+Each choice in the agent picker SHALL show an icon, its name, and what viewers get with it: a timeline with diffs and plans, its status, or the terminal only. An installed agent SHALL also show its version and where its executable was found, and Terminal the shell it starts. An agent that is not installed SHALL offer a link to its install page, opened in the browser. Reading versions SHALL NOT delay the start screen; a version not yet known or not readable SHALL be left out.
+
+#### Scenario: What viewers get
+- **WHEN** the host looks at the picker with Claude Code, OpenCode and omp installed
+- **THEN** Claude Code shows timeline, diffs and plans, and status; omp shows status and the terminal; OpenCode shows the terminal only
+
+#### Scenario: Version and location
+- **WHEN** Claude Code 2.1.309 is installed at `/opt/homebrew/bin/claude`
+- **THEN** its choice shows version 2.1.309 and that path
+
+#### Scenario: Terminal
+- **WHEN** the host's login shell is `/bin/zsh`
+- **THEN** the Terminal choice shows that it starts `/bin/zsh`
+
+#### Scenario: Version read in the background
+- **WHEN** the start screen opens and an agent takes several seconds to report its version
+- **THEN** the picker is usable at once, without that version, and the version appears once it is known
+
+#### Scenario: Version cannot be read
+- **WHEN** an installed agent does not answer `--version` within the time limit, or answers with no version in it
+- **THEN** its choice shows no version and can still be chosen
+
+#### Scenario: Not installed
+- **WHEN** omp is not installed
+- **THEN** omp is not among the choices, and is listed under "Not installed" with a link that opens its install page in the browser

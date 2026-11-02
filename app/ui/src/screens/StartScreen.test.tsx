@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { demoProfile } from '../api/demo';
@@ -26,11 +26,66 @@ describe('start screen', () => {
   });
 
   it('shows which agents are installed and preselects the last used one', () => {
-    setup({ lastAgent: 'open-code' });
+    setup({ lastAgent: 'open-code' }, { agentVersions: async () => [] });
     const agents = screen.getAllByRole('radio');
-    expect(agents.map((a) => a.textContent)).toEqual(['Claude CodeTimeline and diffs', 'OpenCodeTerminal only', 'ompNot installed', 'TerminalYour shell']);
+    expect(agents.map((a) => a.textContent)).toEqual([
+      'Claude CodeTimeline, diffs and plans · Status~/.local/bin/claude',
+      'OpenCodeTerminal only/opt/homebrew/bin/opencode',
+      'TerminalYour shell/bin/zsh',
+    ]);
     expect(screen.getByRole('radio', { name: /OpenCode/ })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('radio', { name: /omp/ })).toBeDisabled();
+    // A missing agent is not a choice, only a way to its install page.
+    expect(screen.queryByRole('radio', { name: /omp/ })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('group', { name: 'Not installed' })).getByRole('button', { name: 'Install page of omp' })).toBeInTheDocument();
+    // The full path, also when the row cuts it short.
+    expect(screen.getByRole('radio', { name: /Claude Code/ })).toHaveAttribute('title', '/Users/nick/.local/bin/claude');
+  });
+
+  it('shows the versions once they are known', async () => {
+    let answer: (versions: { agent: 'claude-code' | 'open-code'; version: string | null }[]) => void = () => {};
+    setup({}, { agentVersions: () => new Promise((resolve) => (answer = resolve)) });
+    // Usable before any version is known.
+    expect(screen.getByRole('radio', { name: /^Claude Code/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByText('2.1.309')).not.toBeInTheDocument();
+    answer([
+      { agent: 'claude-code', version: '2.1.309' },
+      { agent: 'open-code', version: null },
+    ]);
+    expect(await screen.findByText('2.1.309')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /OpenCode/ }).textContent).toBe('OpenCodeTerminal only/opt/homebrew/bin/opencode');
+  });
+
+  it('shows no versions when they cannot be read', async () => {
+    const { bridge } = setup({}, { agentVersions: vi.fn(async () => Promise.reject(new Error('no'))) });
+    await waitFor(() => expect(bridge.agentVersions).toHaveBeenCalled());
+    expect(screen.getByRole('radio', { name: /^Claude Code/ }).textContent).toBe('Claude CodeTimeline, diffs and plans · Status~/.local/bin/claude');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('lists Codex, Grok and pi before Terminal', () => {
+    const terminal = demoProfile.agents.find((agent) => agent.id === 'terminal')!;
+    const others = demoProfile.agents.filter((agent) => agent.id !== 'terminal');
+    const added = [
+      { id: 'codex', name: 'Codex', installed: true, hasTimeline: false, reportsStatus: true, path: '/opt/homebrew/bin/codex', installPage: 'https://developers.openai.com/codex/cli' },
+      { id: 'grok', name: 'Grok', installed: false, hasTimeline: false, reportsStatus: true, path: null, installPage: 'https://x.ai/cli' },
+      { id: 'pi', name: 'pi', installed: false, hasTimeline: false, reportsStatus: true, path: null, installPage: 'https://github.com/earendil-works/pi' },
+    ] satisfies Profile['agents'];
+    setup({ agents: [...others, ...added, terminal] }, { agentVersions: async () => [] });
+    expect(screen.getAllByRole('radio').map((a) => a.textContent)).toEqual([
+      'Claude CodeTimeline, diffs and plans · Status~/.local/bin/claude',
+      'OpenCodeTerminal only/opt/homebrew/bin/opencode',
+      'CodexStatus · Terminal/opt/homebrew/bin/codex',
+      'TerminalYour shell/bin/zsh',
+    ]);
+    const missing = within(screen.getByRole('group', { name: 'Not installed' })).getAllByRole('button');
+    expect(missing.map((chip) => chip.getAttribute('aria-label'))).toEqual(['Install page of omp', 'Install page of Grok', 'Install page of pi']);
+  });
+
+  it('opens the install page of an agent that is not installed', async () => {
+    const { bridge } = setup();
+    expect(screen.queryByRole('button', { name: 'Install page of Claude Code' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Install page of omp' }));
+    expect(bridge.openInstallPage).toHaveBeenCalledWith('omp');
   });
 
   it('preselects Terminal when it was used last', () => {
@@ -54,7 +109,7 @@ describe('start screen', () => {
     const agents = demoProfile.agents.map((agent) => (agent.id === 'terminal' ? agent : { ...agent, installed: false }));
     const { bridge } = setup({ agents, lastAgent: 'claude-code' });
     expect(screen.getByRole('radio', { name: /^Terminal/ })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByText(/No coding agent is installed\. Install Claude Code, OpenCode or omp for a timeline; you can still share a terminal\./)).toBeInTheDocument();
+    expect(screen.getByText(/No coding agent is installed\. Install Claude Code, OpenCode, omp, Codex, Grok or pi to share an agent; you can still share a terminal\./)).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Start a session in webshop' }));
     expect(bridge.startHosting).toHaveBeenCalledWith('terminal', expect.any(String), expect.any(Number), expect.any(Number));

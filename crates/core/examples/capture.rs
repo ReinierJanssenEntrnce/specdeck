@@ -1,5 +1,5 @@
 //! Records an agent's terminal output for test fixtures, with two resizes along the way:
-//! `cargo run -p specdeck-core --example capture -- <claude-code|open-code|omp> <out.json>`
+//! `cargo run -p specdeck-core --example capture -- <claude-code|open-code|omp|codex|grok|pi> <out.json>`
 //!
 //! The agent starts in an empty temporary folder. Check the result for personal data before
 //! committing it.
@@ -23,7 +23,10 @@ fn main() {
         Some("claude-code") => AgentId::ClaudeCode,
         Some("open-code") => AgentId::OpenCode,
         Some("omp") => AgentId::Omp,
-        _ => panic!("usage: capture <claude-code|open-code|omp> <out.json>"),
+        Some("codex") => AgentId::Codex,
+        Some("grok") => AgentId::Grok,
+        Some("pi") => AgentId::Pi,
+        _ => panic!("usage: capture <claude-code|open-code|omp|codex|grok|pi> <out.json>"),
     };
     let out = args.next().expect("output file");
     let folder = tempfile::tempdir().unwrap();

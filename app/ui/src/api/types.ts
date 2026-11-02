@@ -1,6 +1,6 @@
 // Types shared with the Rust side (app/src-tauri). Names follow its serde output.
 
-export type AgentId = 'claude-code' | 'open-code' | 'omp' | 'terminal';
+export type AgentId = 'claude-code' | 'open-code' | 'omp' | 'codex' | 'grok' | 'pi' | 'terminal';
 export type AgentStatus = 'starting' | 'working' | 'waiting' | 'exited' | 'unknown';
 
 export interface AgentInfo {
@@ -8,6 +8,18 @@ export interface AgentInfo {
   name: string;
   installed: boolean;
   hasTimeline: boolean;
+  /** Reports whether it is working or waiting. */
+  reportsStatus: boolean;
+  /** The executable, or for Terminal the shell it starts. */
+  path: string | null;
+  /** Where to read how to install it. */
+  installPage: string | null;
+}
+
+export interface AgentVersion {
+  agent: AgentId;
+  /** Null when the agent printed none in time. */
+  version: string | null;
 }
 
 export interface RecentFolder {
@@ -75,6 +87,8 @@ export interface Profile {
   updatesItself: boolean;
   /** Check for and download new releases in the background. */
   checkUpdates: boolean;
+  /** Screen readers read the terminal. */
+  screenReader: boolean;
 }
 
 /** Where a new release is: being looked for, downloaded, or ready to install on restart. */

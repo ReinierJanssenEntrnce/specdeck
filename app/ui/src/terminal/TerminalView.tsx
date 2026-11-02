@@ -36,6 +36,11 @@ export interface TerminalHandle {
 interface Props {
   /** The host's terminal fits its pane and takes input; a viewer's keeps the host's size, scales its text to the pane's width and keeps the cursor in sight. */
   mode: 'host' | 'viewer';
+  /**
+   * Lets VoiceOver, Narrator and Orca read the terminal's lines. Off unless the user turns it on:
+   * in this mode xterm keeps typed text in its hidden text box and can send it again.
+   */
+  screenReader?: boolean;
   onData?: (data: string) => void;
   onResize?: (cols: number, rows: number) => void;
   /** Whether the view follows the latest output. */
@@ -103,8 +108,7 @@ export const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalV
       scrollback: 100_000,
       theme: currentTheme(),
       macOptionIsMeta: true,
-      // Lets VoiceOver, Narrator and Orca read the terminal's lines.
-      screenReaderMode: true,
+      screenReaderMode: props.screenReader ?? false,
     });
     const fit = new FitAddon();
     const searchAddon = new SearchAddon();
@@ -255,6 +259,11 @@ export const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalV
     // The mode is fixed for the life of a session screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Changed in the settings, also while a session is open.
+  useEffect(() => {
+    if (terminal.current) terminal.current.options.screenReaderMode = props.screenReader ?? false;
+  }, [props.screenReader]);
 
   useImperativeHandle(ref, () => ({
     write(steps) {
