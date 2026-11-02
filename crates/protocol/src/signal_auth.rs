@@ -95,6 +95,14 @@ mod tests {
     }
 
     #[test]
+    fn tag_is_stable_across_versions() {
+        // Computed independently (Python hmac and hashlib), so apps of different versions keep
+        // accepting each other's descriptions.
+        let signed = SignedDescription::sign(&key(), "conn-1", DescriptionKind::Offer, SDP.into());
+        assert_eq!(signed.mac, "64d21c1794849a7128e32e11b29e8f8900d560bf969cfc66a3468c9ca5acacc5");
+    }
+
+    #[test]
     fn valid_description_verifies() {
         let signed = SignedDescription::sign(&key(), "conn-1", DescriptionKind::Offer, SDP.into());
         assert_eq!(signed.verify(&key(), "conn-1", DescriptionKind::Offer), Ok(SDP));
