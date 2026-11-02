@@ -3,7 +3,7 @@
 
 import type { MenuCommand } from '../menu/menu';
 import { createContext, useContext } from 'react';
-import type { AgentId, HostEvent, JoinLink, Profile, ServiceCheck, View, ViewEvent } from './types';
+import type { AgentId, HostEvent, JoinLink, Profile, ServiceCheck, UpdateState, View, ViewEvent } from './types';
 
 /** Receives terminal data as the binary stream described in src/terminal/stream.ts. */
 export type TerminalSink = (data: ArrayBuffer) => void;
@@ -12,6 +12,12 @@ export interface Bridge {
   getProfile(): Promise<Profile>;
   setUsername(username: string): Promise<Profile>;
   setNotifications(enabled: boolean): Promise<Profile>;
+  setCheckUpdates(enabled: boolean): Promise<Profile>;
+  updateStatus(): Promise<UpdateState>;
+  /** Calls `handler` whenever the update state changes; returns a function that stops listening. */
+  onUpdate(handler: (state: UpdateState) => void): () => void;
+  /** Ends or leaves the session, installs the ready update and restarts; fails if it cannot. */
+  restartToUpdate(): Promise<void>;
   setView(view: View): Promise<Profile>;
   /** A domain or URL; empty for the built-in service. Fails for what is not a service. */
   setSharingService(service: string): Promise<Profile>;

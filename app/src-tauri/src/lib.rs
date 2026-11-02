@@ -5,6 +5,7 @@ mod services;
 mod settings;
 mod terminal;
 mod tray;
+mod updates;
 mod viewer;
 
 use std::path::{Path, PathBuf};
@@ -33,6 +34,7 @@ use tauri_plugin_window_state::StateFlags;
 use crate::host::{HostEvent, HostNotice, HostRuntime, SharingState, StartOptions, Summary};
 use crate::services::{ServiceCheck, Services};
 use crate::settings::{Settings, View, ZOOM_DEFAULT, zoom_in, zoom_out};
+use crate::updates::{GitHubFeed, Outcome, UpdateState, Updates};
 use crate::viewer::{EndReason, ViewEvent, ViewerRuntime};
 
 struct AppState {
@@ -48,6 +50,8 @@ struct AppState {
     translucent: AtomicBool,
     /// A join link the window has not handled yet.
     join_link: Mutex<Option<JoinLink>>,
+    /// New releases: whether one is being fetched or is ready to install.
+    updates: Arc<Updates<tauri_plugin_updater::Update>>,
 }
 
 impl AppState {
@@ -110,6 +114,9 @@ struct Profile {
     service_overridden: bool,
     /// Hosting or viewing; the sharing service cannot change meanwhile.
     in_session: bool,
+    /// This install updates itself, so Settings offers the update setting.
+    updates_itself: bool,
+    check_updates: bool,
 }
 
 /// The agents to choose from, in display order: the coding agents, then Terminal.
@@ -157,6 +164,8 @@ fn profile(state: &AppState) -> Profile {
         built_in_service: state.services.built_in.clone(),
         service_overridden: state.services.overridden.is_some(),
         in_session,
+        updates_itself: state.updates.state() != UpdateState::Disabled,
+        check_updates: settings.check_updates,
     }
 }
 
@@ -193,6 +202,75 @@ async fn set_notifications(
     }
     settings_changed(&app);
     Ok(profile(&state))
+}
+
+/// Turns the background update checks on or off; turning them on checks at once.
+#[tauri::command]
+async fn set_check_updates(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<Profile, String> {
+    {
+        let mut settings = state.settings.lock().unwrap();
+        settings.check_updates = enabled;
+        state.save(&settings);
+    }
+    if enabled {
+        let updates = state.updates.clone();
+        let feed = GitHubFeed(app.clone());
+        tauri::async_runtime::spawn(async move { updates.check(&feed).await });
+    }
+    settings_changed(&app);
+    Ok(profile(&state))
+}
+
+/// What the windows show about updates, for a window that opens after the last change.
+#[tauri::command]
+async fn update_status(state: State<'_, AppState>) -> Result<UpdateState, String> {
+    Ok(state.updates.state())
+}
+
+/// How long a session that ends for an update has to tell its viewers before the app stops;
+/// the sharing service gives its last messages half a second to leave.
+const SESSION_END_GRACE: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Installs the ready update and starts the new version (auto-update design decision 7). A
+/// hosted session ends for everyone and a watched one is left first; the window has already
+/// asked. On Windows the installer exits the app and starts the new version itself.
+#[tauri::command]
+async fn restart_to_update(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let Some((update, bytes)) = state.updates.take_ready() else {
+        return Err("No update is ready.".into());
+    };
+    let installed = updates::install_after_session(
+        || end_or_leave_session(&app),
+        SESSION_END_GRACE,
+        || update.install(&bytes).map_err(|error| error.to_string()),
+    )
+    .await;
+    if let Err(error) = installed {
+        state.updates.restore(update, bytes);
+        return Err(format!("The update could not be installed: {error}"));
+    }
+    app.restart();
+}
+
+/// Ends a hosted session or leaves a watched one; whether there was one.
+fn end_or_leave_session(app: &AppHandle) -> bool {
+    let state = app.state::<AppState>();
+    let hosting = state.host.lock().unwrap().is_some();
+    if hosting {
+        end_session(app);
+    }
+    let viewer = state.viewer.lock().unwrap().take();
+    let watching = viewer.is_some();
+    if let Some(viewer) = viewer {
+        viewer.leave();
+        session_changed(app);
+    }
+    hosting || watching
 }
 
 #[tauri::command]
@@ -631,7 +709,8 @@ fn refresh_menu(app: &AppHandle) {
     let state = app.state::<AppState>();
     let recent = state.settings.lock().unwrap().existing_recent();
     let hosting = state.host.lock().unwrap().is_some();
-    if let Ok(menu) = menu::build(app, &menu::MenuState { recent: &recent, hosting }) {
+    let updates = state.updates.state() != UpdateState::Disabled;
+    if let Ok(menu) = menu::build(app, &menu::MenuState { recent: &recent, hosting, updates }) {
         let _ = app.set_menu(menu);
     }
 }
@@ -654,6 +733,7 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
         menu::ids::ZOOM_IN => return change_zoom(app, zoom_in),
         menu::ids::ZOOM_OUT => return change_zoom(app, zoom_out),
         menu::ids::ZOOM_RESET => return change_zoom(app, |_| ZOOM_DEFAULT),
+        menu::ids::CHECK_UPDATES => return check_for_updates(app),
         tray::ids::OPEN => return open_main_window(app),
         tray::ids::COPY_CODE => return copy_invite_code(app),
         tray::ids::END => return confirm_end_session(app),
@@ -738,6 +818,66 @@ fn confirm_end_session(app: &AppHandle) {
 }
 
 /// Quits, after confirming when that would end a hosted session for everyone.
+/// The background update checks, for as long as the app runs (spec: Background update checks).
+fn start_update_checks(app: &AppHandle, updates: Arc<Updates<tauri_plugin_updater::Update>>) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let feed = GitHubFeed(app.clone());
+        let enabled = || app.state::<AppState>().settings.lock().unwrap().check_updates;
+        let wait = async || {
+            tokio::time::sleep(updates::CHECK_INTERVAL).await;
+            true
+        };
+        updates::run_checks(&updates, &feed, enabled, wait).await;
+    });
+}
+
+/// Check for Updates… in the menu: checks at once, whatever the setting, and says what it found
+/// in a dialog (spec: Check for updates on demand). A newer release downloads after the dialog.
+fn check_for_updates(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let updates = app.state::<AppState>().updates.clone();
+        let feed = GitHubFeed(app.clone());
+        match updates.find(&feed).await {
+            Ok(release) => {
+                show_update_outcome(&app, &Outcome::Downloading(release.version.clone()));
+                updates.fetch(release).await;
+            }
+            Err(outcome) => show_update_outcome(&app, &outcome),
+        }
+    });
+}
+
+fn show_update_outcome(app: &AppHandle, outcome: &Outcome) {
+    let (title, message) = updates::outcome_text(outcome, &app.package_info().version.to_string());
+    let dialog = app.dialog().message(message).title(title);
+    match outcome {
+        Outcome::Ready(_) => {
+            // Restarting goes through the window, which asks first during a session.
+            let handle = app.clone();
+            dialog
+                .kind(MessageDialogKind::Info)
+                .buttons(MessageDialogButtons::OkCancelCustom(
+                    "Restart to Update".into(),
+                    "Later".into(),
+                ))
+                .show(move |restart| {
+                    if restart {
+                        open_main_window(&handle);
+                        let _ = handle.emit_to(
+                            "main",
+                            "menu",
+                            MenuCommand { id: "restart-to-update".into(), path: None },
+                        );
+                    }
+                });
+        }
+        Outcome::Failed => dialog.kind(MessageDialogKind::Warning).show(|_| {}),
+        _ => dialog.kind(MessageDialogKind::Info).show(|_| {}),
+    }
+}
+
 fn quit(app: &AppHandle) {
     if app.state::<AppState>().host.lock().unwrap().is_none() {
         return app.exit(0);
@@ -831,6 +971,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let config_dir = profile_dir(app.path().app_config_dir()?);
             let data_dir = profile_dir(app.path().app_cache_dir()?).join("sessions");
@@ -841,6 +982,13 @@ pub fn run() {
             std::thread::spawn(move || {
                 let _ = background.set(Environment::detect(PROBE_TIMEOUT));
             });
+            let windows = app.handle().clone();
+            let updates = Arc::new(Updates::new(
+                updates::this_install_updates_itself(),
+                move |state: &UpdateState| {
+                    let _ = windows.emit("update-changed", state);
+                },
+            ));
             app.manage(AppState {
                 settings: Mutex::new(Settings::load(&settings_path)),
                 settings_path,
@@ -851,7 +999,11 @@ pub fn run() {
                 viewer: Mutex::new(None),
                 translucent: AtomicBool::new(false),
                 join_link: Mutex::new(None),
+                updates: updates.clone(),
             });
+            if updates.state() != UpdateState::Disabled {
+                start_update_checks(app.handle(), updates);
+            }
             open_main_window(app.handle());
             refresh_menu(app.handle());
             // Join links: the one the app was started with, and any opened while it runs.
@@ -893,6 +1045,9 @@ pub fn run() {
             get_profile,
             set_username,
             set_notifications,
+            set_check_updates,
+            update_status,
+            restart_to_update,
             set_view,
             set_sharing_service,
             check_sharing_service,
@@ -988,6 +1143,7 @@ mod tests {
             viewer: Mutex::new(None),
             translucent: AtomicBool::new(false),
             join_link: Mutex::new(None),
+            updates: Arc::new(Updates::new(false, |_| {})),
         }
     }
 

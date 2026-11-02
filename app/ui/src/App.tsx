@@ -4,6 +4,7 @@ import type { JoinLink, Profile, View } from './api/types';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { JoinThroughDialog } from './components/JoinThroughDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
+import { UpdateButton, UpdateNotice, useReadyUpdate } from './components/UpdateNotice';
 import { dispatchMenu, useMenu, type MenuCommand } from './menu/menu';
 import { formatCode } from './model/code';
 import { HostScreen } from './screens/HostScreen';
@@ -27,6 +28,18 @@ export function App() {
   // A join link through another sharing service, waiting for the user to agree.
   const [joinThrough, setJoinThrough] = useState<JoinLink | null>(null);
   const [shortcuts, setShortcuts] = useState(false);
+  // A new SpecDeck ready to install, the question before restarting during a session, and why
+  // installing failed.
+  const update = useReadyUpdate();
+  const [askRestart, setAskRestart] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const installUpdate = () => {
+    setAskRestart(false);
+    bridge.restartToUpdate().catch((e) => setUpdateError(errorMessage(e)));
+  };
+  // Restarting ends a hosted session for everyone and leaves a watched one, so it asks first.
+  const restartToUpdate = () => (screen.kind === 'start' ? installUpdate() : setAskRestart(true));
+  const updateButton = update.version ? <UpdateButton version={update.version} onRestart={restartToUpdate} /> : null;
 
   const setView = (view: View) => void bridge.setView(view).then(setProfile);
   const refresh = () =>
@@ -74,6 +87,7 @@ export function App() {
   useMenu((command) => {
     if (command.id === 'shortcuts') return setShortcuts(true);
     if (command.id === 'join-link') return void takeJoinLink();
+    if (command.id === 'restart-to-update') return restartToUpdate();
     // Changed in the settings window.
     if (command.id === 'profile-changed') return void refresh();
     if (!START_COMMANDS.has(command.id)) return;
@@ -117,7 +131,12 @@ export function App() {
   return (
     <>
       {screen.kind === 'host' && (
-        <HostScreen view={profile.view} onView={setView} onEnded={() => refresh().then(() => setScreen({ kind: 'start' }))} />
+        <HostScreen
+          view={profile.view}
+          onView={setView}
+          onEnded={() => refresh().then(() => setScreen({ kind: 'start' }))}
+          update={updateButton}
+        />
       )}
       {screen.kind === 'viewer' && (
         <ViewerScreen
@@ -126,6 +145,7 @@ export function App() {
           server={screen.server}
           view={profile.view}
           onView={setView}
+          update={updateButton}
           onLeave={(retry) =>
             setScreen(retry ? { kind: 'start', code: retry.code, server: retry.server, joinError: retry.message } : { kind: 'start' })
           }
@@ -133,6 +153,17 @@ export function App() {
       )}
       {/* Without a toolbar the top of the window is where it is dragged (macOS title bar). */}
       {screen.kind === 'start' && <div className="drag-strip" data-tauri-drag-region />}
+      {screen.kind === 'start' && update.version && !updateError && (
+        <UpdateNotice version={update.version} onRestart={restartToUpdate} onDismiss={update.dismiss} />
+      )}
+      {updateError && (
+        <div className="update-notice" role="alert">
+          <span>{updateError}</span>
+          <button className="btn ghost icon" onClick={() => setUpdateError(null)} aria-label="Close">
+            ×
+          </button>
+        </div>
+      )}
       {screen.kind === 'start' && (
         <StartScreen
           profile={profile}
@@ -185,6 +216,21 @@ export function App() {
             setScreen({ kind: 'viewer', code, server });
           }}
         />
+      )}
+      {askRestart && update.version && (
+        <ConfirmDialog
+          title={screen.kind === 'host' ? 'End the session for everyone and restart?' : 'Leave the session and restart?'}
+          confirm={screen.kind === 'host' ? 'End Session and Restart' : 'Leave and Restart'}
+          danger={screen.kind === 'host'}
+          onCancel={() => setAskRestart(false)}
+          onConfirm={installUpdate}
+        >
+          <p>
+            {screen.kind === 'host'
+              ? `Restarting installs SpecDeck ${update.version}. It ends your session: everyone watching is disconnected and the agent stops.`
+              : `Restarting installs SpecDeck ${update.version}. You stop watching; you can join again with the invite code while the session runs.`}
+          </p>
+        </ConfirmDialog>
       )}
       {shortcuts && <ShortcutsDialog onClose={() => setShortcuts(false)} />}
     </>

@@ -45,8 +45,18 @@ Or set the service in [Settings](/specdeck/guide/settings/), which works for eve
 
 ## Update
 
-- **Homebrew**: `brew upgrade --cask specdeck`.
-- **Installers**: download the new release and install it over the old one. Your settings stay.
+From version 1.2.0, SpecDeck updates itself when it was installed from the `.dmg`, with Homebrew, with the Windows installer, or as the AppImage. It checks for a new release when it starts and every 6 hours, downloads it in the background, and then shows **SpecDeck 1.2.1 is ready** (with the new version) and **Restart to update**. Nothing is installed until you choose that, and SpecDeck never restarts by itself. While you host or watch a session, it asks first: restarting ends your hosted session for everyone, or leaves the one you watch.
+
+- **Check now**: **SpecDeck › Check for Updates…** on macOS, **Help › Check for Updates…** on Windows and Linux.
+- **Turn the background checks off**: **Check for updates automatically** in [Settings](/specdeck/guide/settings/). Check for Updates… still works.
+- **Versions before 1.2.0** cannot update themselves: install 1.2.0 by hand once, as below.
+- **Only final releases** are offered, never test releases, and every update is checked against SpecDeck's signature before it is installed. A check only asks GitHub for the newest release; it sends nothing about you or your sessions.
+- **macOS asks again for Local Network access** after each update, because releases are not signed with an Apple Developer ID yet. Select **Allow** again.
+
+Where SpecDeck does not update itself:
+
+- **`.deb`**: download the new release and install it over the old one. Your settings stay.
 - **Nix**: update the flake input.
+- **Homebrew** leaves SpecDeck to update itself; `brew upgrade --greedy --cask specdeck` updates it through Homebrew instead.
 
 When the host's and a viewer's versions cannot work together, SpecDeck says **Update SpecDeck to join** or **The host needs to update**.

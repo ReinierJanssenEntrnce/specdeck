@@ -71,7 +71,19 @@ export interface Profile {
   serviceOverridden: boolean;
   /** Hosting or viewing a session; the service cannot change meanwhile. */
   inSession: boolean;
+  /** This install updates itself (macOS app, Windows installer, AppImage). */
+  updatesItself: boolean;
+  /** Check for and download new releases in the background. */
+  checkUpdates: boolean;
 }
+
+/** Where a new release is: being looked for, downloaded, or ready to install on restart. */
+export type UpdateState =
+  | { state: 'disabled' }
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'downloading'; version: string }
+  | { state: 'ready'; version: string };
 
 export interface Participant {
   id: number;

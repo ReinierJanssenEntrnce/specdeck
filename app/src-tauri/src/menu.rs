@@ -33,6 +33,8 @@ pub mod ids {
     pub const ZOOM_RESET: &str = "zoom-reset";
     /// Handled in Rust: confirms first while a session is hosted.
     pub const QUIT: &str = "quit";
+    /// Handled in Rust: checks at once and says what it found.
+    pub const CHECK_UPDATES: &str = "check-updates";
     /// Edit commands on Windows and Linux, where the native ones would take terminal keys.
     pub const COPY: &str = "copy";
     pub const PASTE: &str = "paste";
@@ -43,6 +45,18 @@ pub mod ids {
 pub struct MenuState<'a> {
     pub recent: &'a [PathBuf],
     pub hosting: bool,
+    /// This install updates itself.
+    pub updates: bool,
+}
+
+/// The menu that offers Check for Updates…, if any (auto-update design decision 5): the
+/// SpecDeck menu on macOS, Help elsewhere, and none on installs that do not update themselves.
+pub fn check_updates_menu(mac: bool, updates: bool) -> Option<&'static str> {
+    match (updates, mac) {
+        (false, _) => None,
+        (true, true) => Some("SpecDeck"),
+        (true, false) => Some("Help"),
+    }
 }
 
 /// An accelerator for macOS only, or one for every platform.
@@ -73,6 +87,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, state: &MenuState) -> tauri::Result
         ..Default::default()
     };
     let settings = item(app, ids::SETTINGS, "Settings…", Some("CmdOrCtrl+,"), true)?;
+    let check_updates = item(app, ids::CHECK_UPDATES, "Check for Updates…", None, true)?;
+    let updates_in = check_updates_menu(mac, state.updates);
 
     let mut recent = SubmenuBuilder::new(app, "Open Recent");
     for (i, folder) in state.recent.iter().enumerate() {
@@ -146,6 +162,9 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, state: &MenuState) -> tauri::Result
         keys("Cmd+/", Some("F1")),
         true,
     )?);
+    if updates_in == Some("Help") {
+        help = help.separator().item(&check_updates);
+    }
     if !mac {
         help = help.separator().about(Some(about.clone()));
     }
@@ -153,8 +172,11 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, state: &MenuState) -> tauri::Result
 
     let mut menu = MenuBuilder::new(app);
     if mac {
-        let app_menu = SubmenuBuilder::new(app, "SpecDeck")
-            .about(Some(about))
+        let mut app_menu = SubmenuBuilder::new(app, "SpecDeck").about(Some(about));
+        if updates_in == Some("SpecDeck") {
+            app_menu = app_menu.item(&check_updates);
+        }
+        let app_menu = app_menu
             .separator()
             .item(&settings)
             .separator()
@@ -177,4 +199,17 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, state: &MenuState) -> tauri::Result
         menu = menu.items(&[&file, &edit, &view, &help]);
     }
     menu.build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_for_updates_is_offered_only_where_the_install_updates_itself() {
+        assert_eq!(check_updates_menu(true, true), Some("SpecDeck"));
+        assert_eq!(check_updates_menu(false, true), Some("Help"));
+        assert_eq!(check_updates_menu(true, false), None);
+        assert_eq!(check_updates_menu(false, false), None);
+    }
 }

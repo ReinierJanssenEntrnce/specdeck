@@ -88,6 +88,27 @@ export function SettingsScreen() {
           </span>
         </div>
       </div>
+      {profile.updatesItself && (
+        <div className="row">
+          <span id="settings-updates">Updates</span>
+          <div>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={profile.checkUpdates}
+                aria-labelledby="settings-updates"
+                aria-describedby="settings-updates-hint"
+                onChange={async (event) => setProfile(await bridge.setCheckUpdates(event.target.checked))}
+              />
+              Check for updates automatically
+            </label>
+            <span id="settings-updates-hint" className="field-hint">
+              SpecDeck downloads new versions in the background and installs them when you choose Restart to update. Check for
+              Updates… in the menu works either way.
+            </span>
+          </div>
+        </div>
+      )}
       <SharingService profile={profile} onProfile={setProfile} />
     </main>
   );
