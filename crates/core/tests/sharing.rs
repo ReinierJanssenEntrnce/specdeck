@@ -407,7 +407,11 @@ async fn two_viewers_receive_a_burst_of_output_completely() {
 
 /// Twenty viewers while the agent writes continuously: the host's terminal stays responsive and
 /// every viewer gets the output within a second (session-streaming: Session capacity).
+///
+/// A measurement, so it runs alone (`just capacity`, and its own CI job): next to the other tests
+/// on a shared CI machine the host's echo varied by tens of milliseconds from run to run.
 #[tokio::test(flavor = "multi_thread")]
+#[ignore = "a measurement; run alone with `just capacity`"]
 async fn twenty_viewers_under_continuous_output() {
     const BUSY_AGENT: &str = r#"#!/bin/sh
 ( i=0; while true; do i=$((i+1)); echo "tick $i: the agent is writing continuously, about a hundred lines per second"; sleep 0.01; done ) &
@@ -418,8 +422,11 @@ while read line; do echo "got:$line"; done
     let code = ready(&mut hosted.events).await;
 
     let log = hosted.session.log().clone();
+    // Only the newest records: reading the whole log on every poll costs more as it grows, which
+    // would count against the later rounds, the ones with viewers.
     let log_has = |marker: &str| {
-        log.read(0, usize::MAX).unwrap().iter().rev().take(200).any(|r| match r {
+        let from = log.latest().unwrap_or(0).saturating_sub(200);
+        log.read(from, usize::MAX).unwrap().iter().any(|r| match r {
             Record::Output { bytes, .. } => String::from_utf8_lossy(bytes).contains(marker),
             Record::Resize { .. } => false,
         })

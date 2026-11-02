@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Started by renovate-nix-hash.yml for the commit it pushes, which starts no workflow itself.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -39,6 +41,12 @@ jobs:
       - run: just install
 
       - run: just check
+
+      # session-streaming: Session capacity. A measurement, so it runs on its own after the tests:
+      # inside them, on a shared machine, the host's echo varied by tens of milliseconds between
+      # runs. A step rather than a job, so it shares this job's Rust cache.
+      - name: Capacity (20 viewers)
+        run: just capacity
 
       - run: just package
 
