@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Started by renovate-nix-hash.yml for the commit it pushes, which starts no workflow itself.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -39,6 +41,14 @@ jobs:
       - run: just install
 
       - run: just check
+
+      # session-streaming: Session capacity. A measurement, so it runs on its own after the tests,
+      # in a step rather than a job so it shares this job's Rust cache. Reported, not enforced, for
+      # now: on Ubuntu runners 20 viewers added 15 to 110 ms to the host's echo between runs, even
+      # alone, while macOS and Windows showed almost nothing; that cost is still being looked into.
+      - name: Capacity (20 viewers)
+        continue-on-error: true
+        run: just capacity
 
       - run: just package
 

@@ -22,6 +22,10 @@ check:
     pnpm test
     node --test 'scripts/*.test.mjs'
 
+# Measure 20 viewers' effect on the host's terminal, alone so other work does not skew it
+capacity:
+    cargo test -p specdeck-core --test sharing twenty_viewers_under_continuous_output -- --ignored --nocapture
+
 # Format the Rust code
 fmt:
     cargo fmt --all

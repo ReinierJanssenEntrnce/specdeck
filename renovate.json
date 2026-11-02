@@ -2,5 +2,23 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "minimumReleaseAge": "1 day",
+  "gitIgnoredAuthors": [
+    "41898282+github-actions[bot]@users.noreply.github.com"
+  ],
+  "packageRules": [
+    {
+      "description": "The RustCrypto crates share their trait crates, so they only build when updated together",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": ["digest", "hkdf", "hmac", "sha1", "sha2", "ed25519-dalek"],
+      "groupName": "RustCrypto"
+    },
+    {
+      "description": "The workflows' actions in one pull request; runner images (ubuntu-24.04) stay apart",
+      "matchManagers": ["github-actions"],
+      "matchDatasources": ["github-tags"],
+      "groupName": "GitHub Actions"
+    }
   ]
 }

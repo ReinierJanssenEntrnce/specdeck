@@ -151,7 +151,7 @@ mod tests {
     fn reads_the_login_shell_environment() {
         let dir = tempfile::tempdir().unwrap();
         let shell = fake_shell(dir.path(), "export PATH=/from/profile:$PATH; eval \"$4\"");
-        let env = probe_login_shell(&shell, PROBE_TIMEOUT).unwrap();
+        let env = probe_fake_shell(&shell).unwrap();
         assert!(env.get("PATH").unwrap().to_string_lossy().starts_with("/from/profile:"));
     }
 
@@ -164,7 +164,7 @@ mod tests {
             dir.path(),
             "export PATH=/usr/bin:/bin LEADS=$(ps -o pgid= -p $$ | tr -d ' ')-$$; eval \"$4\"",
         );
-        let env = probe_login_shell(&shell, PROBE_TIMEOUT).unwrap();
+        let env = probe_fake_shell(&shell).unwrap();
         let leads = env.get("LEADS").unwrap().into_string().unwrap();
         let (group, pid) = leads.split_once('-').unwrap();
         assert_eq!(group, pid);
@@ -178,6 +178,20 @@ mod tests {
         let started = Instant::now();
         assert!(probe_login_shell(&shell, Duration::from_millis(300)).is_none());
         assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    /// Probes `shell`, trying again a few times. Linux refuses to run a file while any process
+    /// has it open for writing ("text file busy"), and a process another test starts at the
+    /// moment `fake_shell` writes holds that handle until it execs. The app never writes the
+    /// shell it probes.
+    #[cfg(unix)]
+    fn probe_fake_shell(shell: &Path) -> Option<Environment> {
+        (0..5).find_map(|attempt| {
+            if attempt > 0 {
+                thread::sleep(Duration::from_millis(50));
+            }
+            probe_login_shell(shell, PROBE_TIMEOUT)
+        })
     }
 
     #[cfg(unix)]

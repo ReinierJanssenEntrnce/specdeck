@@ -1,0 +1,56 @@
+name: Renovate Nix hash
+
+# nix/package.nix pins a hash of the app's npm dependencies, so every Renovate update to them
+# breaks the Nix build until the hash is updated, which Renovate cannot do itself. This builds only
+# the npm dependencies, takes the hash Nix reports, and commits it to the Renovate branch.
+# renovate.json ignores this bot's commits, so Renovate keeps updating the branch. A push with
+# GITHUB_TOKEN starts no workflows, so CI and Nix are started for the new commit by hand.
+on:
+  push:
+    branches: ['renovate/**']
+    paths:
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - package.json
+      - app/ui/package.json
+
+concurrency:
+  group: renovate-nix-hash-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  hash:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - name: Update the hash if it changed
+        id: update
+        run: |
+          if nix build .#specdeck.pnpmDeps --no-link -L 2>build.log; then
+            echo "The hash is up to date."
+            exit 0
+          fi
+          hash=$(sed -n 's/^ *got: *\(sha256-[A-Za-z0-9+/=]*\)$/\1/p' build.log | head -n 1)
+          if [ -z "$hash" ]; then
+            tail -n 40 build.log
+            echo "::error::The npm dependencies failed to build for another reason than the hash."
+            exit 1
+          fi
+          sed -i "s|hash = \"sha256-[A-Za-z0-9+/=]*\";|hash = \"$hash\";|" nix/package.nix
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am "Update the pnpm dependency hash in nix/package.nix"
+          git push
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+      - name: Start CI and Nix for the new commit
+        if: steps.update.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run ci.yml --ref "$GITHUB_REF_NAME"
+          gh workflow run nix.yml --ref "$GITHUB_REF_NAME"
