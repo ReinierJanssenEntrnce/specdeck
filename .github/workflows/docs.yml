@@ -18,13 +18,13 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # Starlight's "last updated" dates come from the git history.
           fetch-depth: 0
 
       # Node and pnpm pinned in mise.toml.
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v5
         with:
           install_args: node pnpm
 
@@ -34,7 +34,7 @@ jobs:
       - run: pnpm build
         working-directory: docs/site
 
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs/site/dist
 
@@ -50,4 +50,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
