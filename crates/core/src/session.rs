@@ -350,6 +350,7 @@ struct Pump {
     plans: Option<std::sync::mpsc::Sender<ChangeRef>>,
     plan_states: HashMap<String, Entry>,
     /// For a terminal session, its shell.
+    #[cfg_attr(not(unix), allow(dead_code))]
     shell: Option<Shell>,
     folder: PathBuf,
     timeline: Arc<RwLock<Vec<TimelineEvent>>>,
