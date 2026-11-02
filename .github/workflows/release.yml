@@ -12,6 +12,9 @@
 #   APPLE_API_KEY (base64 .p8), APPLE_API_KEY_ID, APPLE_API_ISSUER   notarization
 #   WINDOWS_CERTIFICATE (base64 .pfx), WINDOWS_CERTIFICATE_PASSWORD   signing on Windows
 #   HOMEBREW_TAP_DEPLOY_KEY   write access to nickhartjes/homebrew-tap (see homebrew.yml)
+#   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD   signing updates (auto-update
+#                             design decisions 2 to 4); without them the release has no update
+#                             files and no latest.json, so installed apps find nothing to update
 name: Release
 
 on:
@@ -53,15 +56,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: macOS arm64, os: macos-latest, bundles: dmg, rename: 'dmg/*.dmg=SpecDeck-arm64.dmg' }
+          # `updates`: the update file and its signature, uploaded only when updates are signed. On
+          # macOS that is the zipped .app; on Windows and Linux the installer itself, plus its .sig.
+          - name: macOS arm64
+            os: macos-latest
+            bundles: app,dmg
+            rename: 'dmg/*.dmg=SpecDeck-arm64.dmg'
+            updates: 'macos/*.app.tar.gz=SpecDeck-arm64.app.tar.gz macos/*.app.tar.gz.sig=SpecDeck-arm64.app.tar.gz.sig'
           # Built natively on Intel: cross-compiling the vendored OpenSSL and libdatachannel is fragile.
-          - { name: macOS x64, os: macos-15-intel, bundles: dmg, rename: 'dmg/*.dmg=SpecDeck-x64.dmg' }
-          - { name: Windows, os: windows-latest, bundles: nsis, rename: 'nsis/*.exe=SpecDeck-x64-setup.exe' }
+          - name: macOS x64
+            os: macos-15-intel
+            bundles: app,dmg
+            rename: 'dmg/*.dmg=SpecDeck-x64.dmg'
+            updates: 'macos/*.app.tar.gz=SpecDeck-x64.app.tar.gz macos/*.app.tar.gz.sig=SpecDeck-x64.app.tar.gz.sig'
+          - name: Windows
+            os: windows-latest
+            bundles: nsis
+            rename: 'nsis/*.exe=SpecDeck-x64-setup.exe'
+            updates: 'nsis/*.exe.sig=SpecDeck-x64-setup.exe.sig'
           # The oldest supported Ubuntu, so the AppImage runs on older distributions too.
-          - { name: Linux, os: ubuntu-22.04, bundles: 'appimage,deb', rename: 'appimage/*.AppImage=SpecDeck-x86_64.AppImage deb/*.deb=SpecDeck-amd64.deb' }
+          - name: Linux
+            os: ubuntu-22.04
+            bundles: appimage,deb
+            rename: 'appimage/*.AppImage=SpecDeck-x86_64.AppImage deb/*.deb=SpecDeck-amd64.deb'
+            updates: 'appimage/*.AppImage.sig=SpecDeck-x86_64.AppImage.sig'
     runs-on: ${{ matrix.os }}
     env:
       SPECDECK_SIGNALLING_URL: ${{ secrets.SPECDECK_SIGNALLING_URL }}
+      # Tauri signs the update files with these; empty when the secrets are missing.
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v5
 
@@ -137,11 +161,17 @@ jobs:
       - name: Build the installers
         shell: bash
         run: |
+          configs=()
           if [ -n "${TAURI_SIGNING_CONFIG:-}" ]; then
-            pnpm tauri build --bundles ${{ matrix.bundles }} --config "$TAURI_SIGNING_CONFIG"
-          else
-            pnpm tauri build --bundles ${{ matrix.bundles }}
+            configs+=(--config "$TAURI_SIGNING_CONFIG")
           fi
+          # Update files need the private key: Tauri fails the build when it is missing.
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            configs+=(--config '{"bundle":{"createUpdaterArtifacts":true}}')
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set; this release has no update files."
+          fi
+          pnpm tauri build --bundles ${{ matrix.bundles }} "${configs[@]}"
 
       - name: Check installer size
         shell: bash
@@ -154,7 +184,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p upload
-          for pair in ${{ matrix.rename }}; do
+          files='${{ matrix.rename }}'
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            files="$files ${{ matrix.updates }}"
+          fi
+          for pair in $files; do
             pattern=${pair%%=*}
             name=${pair#*=}
             # shellcheck disable=SC2086
@@ -172,6 +206,22 @@ jobs:
     needs: package
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+      # Apps look for latest.json in the newest release; it names each platform's update file
+      # and signature. Written only when the build jobs uploaded signatures.
+      - name: Add latest.json for installed apps
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p signatures
+          if ! gh release download "$GITHUB_REF_NAME" --pattern '*.sig' --dir signatures; then
+            echo "::warning::No update signatures in this release; it has no latest.json."
+            exit 0
+          fi
+          node scripts/latest-json.mjs "$GITHUB_REF_NAME" "$GH_REPO" signatures > latest.json
+          gh release upload "$GITHUB_REF_NAME" latest.json --clobber
       - name: Publish the draft
         env:
           GH_TOKEN: ${{ github.token }}

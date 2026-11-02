@@ -25,9 +25,10 @@ use crate::launcher::{self, LaunchError, LaunchOptions};
 use crate::mirror::{Colors, Mirror, Responder};
 use crate::output_log::{Batcher, OutputLog};
 use crate::plans::{self, ChangeRef, Plans};
+use crate::program_status::{self, Scanner, Signal};
 use crate::shell_changes::{CommandChanges, ShellChanges};
 use crate::status::{self, StatusLineReader};
-use crate::timeline::{TimelineBuilder, stamp};
+use crate::timeline::{self, TimelineBuilder, stamp};
 use crate::usage::{self, UsageReader};
 
 #[derive(Clone, Debug)]
@@ -205,6 +206,9 @@ impl HostSession {
         };
 
         let process = launcher::launch(&options, env)?;
+        // A terminal session's shell, to tell it apart from a program it runs.
+        let shell_pid =
+            if config.agent == AgentId::Terminal { process.child.process_id() } else { None };
         let log = Arc::new(OutputLog::create(&config.data_dir).map_err(io_error)?);
         let killer = process.child.clone_killer();
         spawn_reader(process.reader, commands.clone());
@@ -240,6 +244,7 @@ impl HostSession {
             log,
             master: process.master,
             mirror: Mirror::new(config.cols, config.rows),
+            scanner: Scanner::new(),
             batcher: Batcher::default(),
             responder: Responder::Mirror,
             writer: session.writer.clone(),
@@ -250,6 +255,7 @@ impl HostSession {
             git: None,
             plans,
             plan_states: HashMap::new(),
+            shell: shell_pid.map(|pid| Shell { pid, in_front: true }),
             folder: config.folder.clone(),
             timeline: session.timeline.clone(),
             status: session.status.clone(),
@@ -317,11 +323,20 @@ impl HostSession {
     }
 }
 
+/// A terminal session's shell, and whether it was in front at the last check.
+#[cfg_attr(not(unix), allow(dead_code))]
+struct Shell {
+    pid: u32,
+    in_front: bool,
+}
+
 /// Owns the terminal state and turns everything that happens into log records and events.
 struct Pump {
     log: Arc<OutputLog>,
     master: Box<dyn MasterPty + Send>,
     mirror: Mirror,
+    /// Finds the program's own status reports in the output (OSC 7501).
+    scanner: Scanner,
     batcher: Batcher,
     responder: Responder,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
@@ -334,6 +349,8 @@ struct Pump {
     /// Where to send the OpenSpec changes the agent touches; their latest plans, by change.
     plans: Option<std::sync::mpsc::Sender<ChangeRef>>,
     plan_states: HashMap<String, Entry>,
+    /// For a terminal session, its shell.
+    shell: Option<Shell>,
     folder: PathBuf,
     timeline: Arc<RwLock<Vec<TimelineEvent>>>,
     status: Arc<Mutex<AgentStatus>>,
@@ -359,7 +376,8 @@ impl Pump {
                     if let Some(at) = self.host_entered.lock().unwrap().take() {
                         self.activity.on_host_enter(at);
                     }
-                    let changes = self.activity.poll(Instant::now());
+                    let mut changes = self.activity.poll(Instant::now());
+                    changes.extend(self.check_foreground());
                     self.apply(changes);
                     // The transcript can grow after the hook that named it, for example the
                     // final answer, or a compaction, which sends no hook.
@@ -369,13 +387,26 @@ impl Pump {
             };
             match command {
                 Some(Command::Output(bytes)) => {
+                    // Before the mirror: a program may test for support by sending device
+                    // attributes after the query, and this answer must arrive first.
+                    let signals = self.scanner.feed(&bytes);
+                    for _ in signals.iter().filter(|signal| **signal == Signal::Query) {
+                        let _ = self.writer.lock().unwrap().write_all(program_status::QUERY_REPLY);
+                    }
                     if let Some(reply) = self.responder.filter(self.mirror.feed(&bytes)) {
                         let _ = self.writer.lock().unwrap().write_all(&reply);
                     }
                     if let Some(batch) = self.batcher.push(&bytes, Instant::now()) {
                         self.append_output(&batch);
                     }
-                    let changes = self.activity.on_output();
+                    let mut changes = self.activity.on_output();
+                    for signal in signals {
+                        changes.extend(self.program_signal(signal));
+                    }
+                    // A notice links to the output before it, which includes its report.
+                    if changes.iter().any(|change| matches!(change, Change::Timeline(_))) {
+                        self.flush();
+                    }
                     self.apply(changes);
                 }
                 Some(Command::OutputClosed) => self.flush(),
@@ -426,6 +457,33 @@ impl Pump {
         }
     }
 
+    /// In a terminal session, the program in front has exited when the shell is back in front,
+    /// also when it was killed before it could clear its report (design decision 6 of
+    /// `agent-status-signals`). Only unix can tell which process group is in front.
+    fn check_foreground(&mut self) -> Vec<Change> {
+        #[cfg(unix)]
+        if let Some(shell) = &mut self.shell
+            && let Some(leader) = self.master.process_group_leader()
+        {
+            let was_in_front = std::mem::replace(&mut shell.in_front, leader as u32 == shell.pid);
+            if shell.in_front && !was_in_front {
+                return self.activity.on_program_ended();
+            }
+        }
+        Vec::new()
+    }
+
+    /// A report or reset the scanner found in the output. Queries are answered as they are
+    /// found: the host's terminal ignores OSC 7501, so the engine answers, with or without a
+    /// host window, and there is still exactly one answer.
+    fn program_signal(&mut self, signal: Signal) -> Vec<Change> {
+        match signal {
+            Signal::Query => Vec::new(),
+            Signal::Report(report) => self.activity.on_report(&report, Instant::now()),
+            Signal::Reset => self.activity.on_program_ended(),
+        }
+    }
+
     fn handle_hook(
         &mut self,
         payload: HookPayload,
@@ -460,6 +518,7 @@ impl Pump {
         changes: Option<CommandChanges>,
         texts: Vec<DocumentText>,
     ) {
+        let compact = timeline::manual_compact(&payload);
         match self.builder.handle(payload) {
             Ok(mut entries) => {
                 entries.extend(
@@ -470,7 +529,10 @@ impl Pump {
                 );
                 let entries = self.builder.with_documents(entries, texts);
                 self.touch_plans(&entries);
-                let changes = self.activity.on_entries(&entries);
+                let changes = match compact {
+                    Some(started) => self.activity.on_compact(started),
+                    None => self.activity.on_entries(&entries),
+                };
                 // Show the timeline as available again before the entries that restored it.
                 self.apply(changes);
                 for entry in entries {

@@ -66,10 +66,39 @@ enum Payload {
         #[serde(default)]
         last_assistant_message: Option<String>,
     },
+    /// Claude Code asks the host's permission for a call, just before its `permission_prompt`
+    /// notice. It names the tool and its input, but not the call's id.
+    PermissionRequest {
+        tool_name: String,
+        #[serde(default)]
+        tool_input: Map<String, Value>,
+    },
+    /// Compaction starts and ends; the engine handles them (see [`manual_compact`]).
+    PreCompact,
+    PostCompact,
 }
 
 /// Notifications that mean Claude Code waits for the host; others (such as being idle) do not.
-const ATTENTION_TYPES: [&str; 2] = ["permission_prompt", "elicitation_dialog"];
+const ATTENTION_TYPES: [&str; 3] =
+    ["permission_prompt", "elicitation_dialog", "elicitation_url_dialog"];
+/// Input fields that say what a tool would act on, in order of preference.
+const SUMMARY_FIELDS: [&str; 5] = ["command", "file_path", "path", "url", "pattern"];
+/// A permission notice's summary of the input is cut to this many characters.
+const MAX_SUMMARY_CHARS: usize = 200;
+
+/// For a manual compaction's hook events, whether it started (`true`) or finished. Claude Code
+/// sends no prompt or `Stop` for a manual `/compact`, so these are its only events. `None` for
+/// every other payload, and for automatic compactions, which happen inside a turn.
+pub fn manual_compact(payload: &HookPayload) -> Option<bool> {
+    if payload.get("trigger").and_then(Value::as_str) != Some("manual") {
+        return None;
+    }
+    match payload.get("hook_event_name").and_then(Value::as_str)? {
+        "PreCompact" => Some(true),
+        "PostCompact" => Some(false),
+        _ => None,
+    }
+}
 
 #[derive(Deserialize)]
 struct ToolCall {
@@ -88,8 +117,12 @@ struct OpenCall {
     prompt_id: String,
     tool_name: String,
     by_helper: bool,
+    /// Kept to match a permission request, which does not name the call.
+    input: Map<String, Value>,
     /// Claude Code asked the host's permission for it.
     awaiting_permission: bool,
+    /// A notice that Claude waits for the host was shown for it.
+    noticed: bool,
 }
 
 /// What file-editing tools report in `tool_response`.
@@ -130,6 +163,9 @@ pub struct TimelineBuilder {
     open_calls: Vec<OpenCall>,
     /// Helpers running in the background: agent id → (tool_use_id, prompt_id) of their call.
     background_helpers: HashMap<String, (String, String)>,
+    /// A permission request showed its notice, so the `permission_prompt` notice that follows
+    /// it adds none.
+    requested_notice: bool,
 }
 
 impl TimelineBuilder {
@@ -137,7 +173,13 @@ impl TimelineBuilder {
         let cwd = cwd.into();
         let resolved_cwd =
             Path::new(&cwd).canonicalize().ok().filter(|resolved| *resolved != Path::new(&cwd));
-        Self { cwd, resolved_cwd, open_calls: Vec::new(), background_helpers: HashMap::new() }
+        Self {
+            cwd,
+            resolved_cwd,
+            open_calls: Vec::new(),
+            background_helpers: HashMap::new(),
+            requested_notice: false,
+        }
     }
 
     /// The event for starting the agent, which the engine emits itself.
@@ -154,6 +196,7 @@ impl TimelineBuilder {
 
         Ok(match payload {
             Payload::UserPromptSubmit { prompt_id, prompt } => {
+                self.requested_notice = false;
                 // A denied or dismissed call gets no result and its prompt no `Stop`; the next
                 // prompt is the first sign that it never ran.
                 let mut entries = self.close_main_calls(|call| call.prompt_id != prompt_id);
@@ -169,7 +212,9 @@ impl TimelineBuilder {
                     prompt_id: call.prompt_id.clone(),
                     tool_name: call.tool_name.clone(),
                     by_helper: call.agent_id.is_some(),
+                    input: call.tool_input.clone(),
                     awaiting_permission: false,
+                    noticed: false,
                 });
                 vec![Entry::ToolCall {
                     prompt_id: call.prompt_id,
@@ -230,6 +275,7 @@ impl TimelineBuilder {
                 }]
             }
             Payload::Stop { prompt_id, last_assistant_message } => {
+                self.requested_notice = false;
                 // A tool call without a result by the end of the turn never ran.
                 let mut entries = self.close_main_calls(|call| call.prompt_id == prompt_id);
                 if let Some(text) = last_assistant_message {
@@ -239,13 +285,15 @@ impl TimelineBuilder {
             }
             Payload::SessionEnd => vec![Entry::SessionEnded],
             Payload::Notification { message, notification_type } => {
-                if notification_type == "permission_prompt"
-                    && let Some(call) = self.open_calls.last_mut()
-                    // These two ask for permission to show their own dialog.
-                    && call.tool_name != QUESTION_TOOL
-                    && call.tool_name != PLAN_TOOL
-                {
-                    call.awaiting_permission = true;
+                if notification_type == "permission_prompt" {
+                    if std::mem::take(&mut self.requested_notice) {
+                        // The permission request before it said the same, in more detail.
+                        return Ok(Vec::new());
+                    }
+                    if let Some(call) = self.open_calls.last_mut() {
+                        call.noticed = true;
+                        call.awaiting_permission = !asks_itself(&call.tool_name);
+                    }
                 }
                 if ATTENTION_TYPES.contains(&notification_type.as_str()) {
                     vec![Entry::Attention { message }]
@@ -253,6 +301,28 @@ impl TimelineBuilder {
                     Vec::new()
                 }
             }
+            Payload::PermissionRequest { tool_name, tool_input } => {
+                let message = self.permission_text(&tool_name, &tool_input);
+                // The call it is for: same tool and input, else the newest of that tool, else
+                // the newest call.
+                let index = self
+                    .open_calls
+                    .iter()
+                    .rposition(|call| call.tool_name == tool_name && call.input == tool_input)
+                    .or_else(|| {
+                        self.open_calls.iter().rposition(|call| call.tool_name == tool_name)
+                    })
+                    .or_else(|| self.open_calls.len().checked_sub(1));
+                if let Some(call) = index.map(|index| &mut self.open_calls[index]) {
+                    call.awaiting_permission = !asks_itself(&call.tool_name);
+                    if std::mem::replace(&mut call.noticed, true) {
+                        return Ok(Vec::new());
+                    }
+                }
+                self.requested_notice = true;
+                vec![Entry::Attention { message }]
+            }
+            Payload::PreCompact | Payload::PostCompact => Vec::new(),
             Payload::SubagentStop { agent_id, last_assistant_message } => {
                 let helper = agent_id.and_then(|id| self.background_helpers.remove(&id));
                 match (helper, last_assistant_message) {
@@ -268,6 +338,40 @@ impl TimelineBuilder {
                 }
             }
         })
+    }
+
+    /// The notice for a permission request: what Claude asks to do, asks, or wants reviewed.
+    fn permission_text(&self, tool_name: &str, input: &Map<String, Value>) -> String {
+        match tool_name {
+            QUESTION_TOOL => {
+                let questions = input.get("questions").and_then(Value::as_array);
+                let first = questions
+                    .and_then(|questions| questions.first())
+                    .and_then(|question| question.get("question"))
+                    .and_then(Value::as_str);
+                let more = questions.map_or(0, |questions| questions.len().saturating_sub(1));
+                match (first, more) {
+                    (None, _) => "Claude asks you a question".into(),
+                    (Some(question), 0) => format!("Claude asks: {question}"),
+                    (Some(question), more) => format!("Claude asks: {question} (and {more} more)"),
+                }
+            }
+            PLAN_TOOL => "Claude has a plan for you to review".into(),
+            _ => {
+                let summary = SUMMARY_FIELDS.iter().find_map(|field| {
+                    let value = input.get(*field)?.as_str()?;
+                    let value = match *field {
+                        "file_path" | "path" => self.display_path(value),
+                        _ => value.to_owned(),
+                    };
+                    Some(cut(&value, MAX_SUMMARY_CHARS))
+                });
+                match summary {
+                    Some(summary) => format!("Claude wants to use {tool_name}: {summary}"),
+                    None => format!("Claude wants to use {tool_name}"),
+                }
+            }
+        }
     }
 
     /// Ends the calls of the main conversation that `ends` picks as not run. A helper's calls are
@@ -390,6 +494,23 @@ fn added_file(content: &str) -> DiffHunk {
 
 /// The host's answers to an `AskUserQuestion` call. Claude Code reports each answer as one text,
 /// with several picks and anything the host typed joined by ", ".
+/// Questions and plans ask for permission to show their own dialog, so the host's choice there
+/// is not a permission decision.
+fn asks_itself(tool_name: &str) -> bool {
+    tool_name == QUESTION_TOOL || tool_name == PLAN_TOOL
+}
+
+/// `text` cut to at most `max` characters, the last of them an ellipsis.
+fn cut(text: &str, max: usize) -> String {
+    let line = text.lines().next().unwrap_or_default();
+    if line.chars().count() <= max && line.len() == text.len() {
+        return text.to_owned();
+    }
+    let mut cut: String = line.chars().take(max - 1).collect();
+    cut.push('…');
+    cut
+}
+
 fn answers(response: &Value, input: &Map<String, Value>) -> Option<ToolOutcome> {
     let given = response.get("answers")?.as_object()?;
     let questions = response.get("questions").or_else(|| input.get("questions"))?.as_array()?;
@@ -699,5 +820,147 @@ mod tests {
             ),
             None
         );
+    }
+
+    fn permission_request(tool: &str, input: Value) -> HookPayload {
+        payload(serde_json::json!({
+            "hook_event_name": "PermissionRequest", "prompt_id": "p", "tool_name": tool,
+            "tool_input": input
+        }))
+    }
+
+    fn permission_prompt() -> HookPayload {
+        payload(serde_json::json!({
+            "hook_event_name": "Notification", "message": "Claude needs your permission",
+            "notification_type": "permission_prompt"
+        }))
+    }
+
+    fn messages(entries: Vec<Entry>) -> Vec<String> {
+        entries
+            .into_iter()
+            .filter_map(|entry| match entry {
+                Entry::Attention { message } => Some(message),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn decision(entries: Vec<Entry>) -> Option<Permission> {
+        match &entries[0] {
+            Entry::ToolResult { permission, .. } => *permission,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_permission_request_after_its_notice_adds_none() {
+        let mut builder = TimelineBuilder::new("/work");
+        let input = serde_json::json!({ "tool_input": { "command": "ls" } });
+        builder.handle(call("PreToolUse", "Bash", "b", input)).unwrap();
+        let notice = builder.handle(permission_prompt()).unwrap();
+        assert_eq!(messages(notice), ["Claude needs your permission"]);
+        let request = permission_request("Bash", serde_json::json!({ "command": "ls" }));
+        assert!(builder.handle(request).unwrap().is_empty());
+        let ran = builder.handle(call("PostToolUse", "Bash", "b", serde_json::json!({})));
+        assert_eq!(decision(ran.unwrap()), Some(Permission::Allowed));
+    }
+
+    #[test]
+    fn a_permission_request_is_for_its_own_call_when_others_are_open() {
+        let mut builder = TimelineBuilder::new("/work");
+        let write = serde_json::json!({ "file_path": "/work/src/main.rs", "content": "x" });
+        builder
+            .handle(call("PreToolUse", "Write", "w", serde_json::json!({ "tool_input": write })))
+            .unwrap();
+        // A helper's command starts after Claude's own write.
+        let helper = serde_json::json!({ "agent_id": "a1", "tool_input": { "command": "ls" } });
+        builder.handle(call("PreToolUse", "Bash", "h", helper)).unwrap();
+
+        let asked = builder.handle(permission_request("Write", write)).unwrap();
+        assert_eq!(messages(asked), ["Claude wants to use Write: src/main.rs"]);
+        assert!(builder.handle(permission_prompt()).unwrap().is_empty());
+
+        let helper_ran = builder.handle(call("PostToolUse", "Bash", "h", serde_json::json!({})));
+        assert_eq!(decision(helper_ran.unwrap()), None);
+        let wrote = builder.handle(call("PostToolUse", "Write", "w", serde_json::json!({})));
+        assert_eq!(decision(wrote.unwrap()), Some(Permission::Allowed));
+    }
+
+    #[test]
+    fn a_permission_request_without_a_matching_call_takes_the_newest() {
+        let mut builder = TimelineBuilder::new("/work");
+        builder.handle(call("PreToolUse", "Bash", "b", serde_json::json!({}))).unwrap();
+        let asked = builder.handle(permission_request("WebFetch", serde_json::json!({}))).unwrap();
+        assert_eq!(messages(asked), ["Claude wants to use WebFetch"]);
+        let ran = builder.handle(call("PostToolUse", "Bash", "b", serde_json::json!({})));
+        assert_eq!(decision(ran.unwrap()), Some(Permission::Allowed));
+    }
+
+    #[test]
+    fn a_permission_request_summarises_what_the_tool_acts_on() {
+        let text = |tool: &str, input: Value| {
+            let mut builder = TimelineBuilder::new("/work");
+            messages(builder.handle(permission_request(tool, input)).unwrap()).remove(0)
+        };
+        use serde_json::json;
+        assert_eq!(
+            text("Bash", json!({ "command": "rm -rf build" })),
+            "Claude wants to use Bash: rm -rf build"
+        );
+        assert_eq!(
+            text("Edit", json!({ "file_path": "/work/a.rs" })),
+            "Claude wants to use Edit: a.rs"
+        );
+        assert_eq!(
+            text("Glob", json!({ "path": "/elsewhere" })),
+            "Claude wants to use Glob: /elsewhere"
+        );
+        assert_eq!(
+            text("WebFetch", json!({ "url": "https://example.com" })),
+            "Claude wants to use WebFetch: https://example.com"
+        );
+        assert_eq!(text("Grep", json!({ "pattern": "TODO" })), "Claude wants to use Grep: TODO");
+        // Long or multi-line input is cut.
+        let long = text("Bash", json!({ "command": "x".repeat(500) }));
+        assert_eq!(long.chars().count(), "Claude wants to use Bash: ".len() + MAX_SUMMARY_CHARS);
+        assert!(long.ends_with('…'));
+        assert_eq!(
+            text("Bash", json!({ "command": "echo one\necho two" })),
+            "Claude wants to use Bash: echo one…"
+        );
+        // Questions, plans, and tools without a known field.
+        let questions = json!({ "questions": [{ "question": "Tea?" }, { "question": "Milk?" }, { "question": "Sugar?" }] });
+        assert_eq!(text("AskUserQuestion", questions), "Claude asks: Tea? (and 2 more)");
+        assert_eq!(text("AskUserQuestion", json!({})), "Claude asks you a question");
+        assert_eq!(
+            text("ExitPlanMode", json!({ "plan": "# Plan" })),
+            "Claude has a plan for you to review"
+        );
+        assert_eq!(text("Task", json!({ "prompt": "go" })), "Claude wants to use Task");
+    }
+
+    #[test]
+    fn an_mcp_dialog_in_a_browser_asks_for_attention() {
+        let mut builder = TimelineBuilder::new("/work");
+        let asked = builder.handle(payload(serde_json::json!({
+            "hook_event_name": "Notification",
+            "message": "Claude is waiting for you in your browser",
+            "notification_type": "elicitation_url_dialog"
+        })));
+        assert_eq!(messages(asked.unwrap()), ["Claude is waiting for you in your browser"]);
+    }
+
+    #[test]
+    fn manual_compact_only() {
+        let compact = |event: &str, trigger: &str| {
+            manual_compact(&payload(serde_json::json!({
+                "hook_event_name": event, "trigger": trigger
+            })))
+        };
+        assert_eq!(compact("PreCompact", "manual"), Some(true));
+        assert_eq!(compact("PostCompact", "manual"), Some(false));
+        assert_eq!(compact("PreCompact", "auto"), None);
+        assert_eq!(compact("Stop", "manual"), None);
     }
 }

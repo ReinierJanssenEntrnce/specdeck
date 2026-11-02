@@ -106,6 +106,29 @@ describe('host screen', () => {
     expect(screen.getByLabelText('Invite code')).toHaveTextContent('ABCD-1234-EFGH');
   });
 
+  it('shows what an agent without a timeline waits on when the window opens again', async () => {
+    await setup();
+    act(() =>
+      emit({
+        type: 'snapshot',
+        agent: 'omp',
+        folder: '/Users/nick/projects/webshop',
+        timelineSupported: false,
+        sharing: 'ready',
+        code: '7K2M9QXH4TPA',
+        service: 'wss://specdeck.hartj.es/signal',
+        participants: demoParticipants,
+        status: 'waiting',
+        viewerLimit: 20,
+        exited: null,
+        timeline: [{ outputSeq: 0, at: 1, kind: 'attention', message: 'omp asks: Which database?' }],
+      }),
+    );
+    expect(screen.getByText('Waiting for input', { exact: false }).closest('.pill')).toHaveTextContent('Waiting for input: omp asks: Which database?');
+    act(() => emit({ type: 'status', status: 'working' }));
+    expect(screen.getByText('omp is working')).toBeInTheDocument();
+  });
+
   it('talks about the shell in a terminal session', async () => {
     await setup();
     act(() =>

@@ -12,6 +12,7 @@ Open **Settings** with **SpecDeck › Settings…** or **⌘,** on macOS, or **F
 | Your name | The name others see in sessions you start or join from now on |
 | Show notifications | Turns all of SpecDeck's notifications on or off |
 | Sharing service | The service that connects hosts and viewers. Leave it empty for the one built into SpecDeck |
+| Check for updates automatically | Checks for a new SpecDeck in the background and downloads it, ready for **Restart to update**. Only on installs that [update themselves](/specdeck/install/#update) |
 
 ### Sharing service
 

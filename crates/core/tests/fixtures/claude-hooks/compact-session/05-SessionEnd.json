@@ -1,0 +1,8 @@
+{
+  "session_id": "5b0c6f1e-2f4a-4f39-9a51-0d7f3c2e8a11",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/5b0c6f1e-2f4a-4f39-9a51-0d7f3c2e8a11.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "e3261a7e-5fa2-436a-909f-fad645156cad",
+  "hook_event_name": "SessionEnd",
+  "reason": "prompt_input_exit"
+}

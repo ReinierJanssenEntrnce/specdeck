@@ -497,3 +497,75 @@ exit 0"#,
     assert_eq!(plans, [("demo".into(), 0, 2), ("demo".into(), 1, 2)]);
     session.close();
 }
+
+/// A program asks whether the terminal supports status reports and then for device attributes,
+/// as Claude Code does. The OSC 7501 answer must come first and exactly once, with or without
+/// the host's window; device attributes are answered by the mirror only without a window.
+async fn program_status_query_answered(host_window: bool) -> String {
+    let bin = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let script = bin.path().join("probe.bash");
+    std::fs::write(
+        &script,
+        r#"read go
+stty raw -echo
+printf '\033]7501;?\007\033[c'
+IFS= read -r -t 3 -d '\' first
+IFS= read -r -t 1 -d c second
+IFS= read -r -t 1 -d '\' third
+stty sane
+printf '\nfirst=[%s] second=[%s] third=[%s] done\n' "${first#?}" "${second#?}" "$third"
+read wait
+"#,
+    )
+    .unwrap();
+    fake_agent(bin.path(), "omp", &format!("exec bash '{}'", script.display()));
+
+    let (session, mut events) =
+        HostSession::start(config(AgentId::Omp, bin.path(), data.path()), &env(bin.path()))
+            .await
+            .unwrap();
+    session.set_host_window(host_window);
+    session.input(b"go\r").unwrap();
+    wait_for_output(&session, &mut events, "done").await;
+    let output = output_text(&session);
+    session.close();
+    output
+}
+
+#[tokio::test]
+async fn program_status_query_is_answered_once_without_a_host_window() {
+    let output = program_status_query_answered(false).await;
+    let expected = "first=[]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\u{1b}] second=[[?6] third=[] done";
+    assert!(output.contains(expected), "{output:?}");
+}
+
+#[tokio::test]
+async fn program_status_query_is_answered_once_with_a_host_window() {
+    let output = program_status_query_answered(true).await;
+    // The host window (absent in this test) would answer device attributes; the engine still
+    // answers the status query.
+    let expected = "first=[]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\u{1b}] second=[] third=[] done";
+    assert!(output.contains(expected), "{output:?}");
+}
+
+/// A program in a terminal session reports that it is working and is killed before it can clear
+/// its report; the status follows the report, then returns to unknown once the shell is back in
+/// front.
+#[tokio::test]
+async fn terminal_session_status_ends_when_the_shell_is_back_in_front() {
+    let bin = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let mut env = env(bin.path());
+    env.set("SHELL", "/bin/bash");
+    let (session, mut events) =
+        HostSession::start(config(AgentId::Terminal, bin.path(), data.path()), &env).await.unwrap();
+    session.input(b"PS1='prompt> '\r").unwrap();
+    wait_for_output(&session, &mut events, "prompt> ").await;
+
+    let program = r#"bash -c 'printf "\033]7501;state=working:app=omp\007"; sleep 1; kill -9 $$'"#;
+    session.input(format!("{program}\r").as_bytes()).unwrap();
+    next_matching(&mut events, |e| *e == SessionEvent::Status(AgentStatus::Working)).await;
+    next_matching(&mut events, |e| *e == SessionEvent::Status(AgentStatus::Unknown)).await;
+    session.close();
+}
