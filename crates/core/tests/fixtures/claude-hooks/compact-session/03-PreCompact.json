@@ -1,0 +1,9 @@
+{
+  "session_id": "5b0c6f1e-2f4a-4f39-9a51-0d7f3c2e8a11",
+  "transcript_path": "/home/user/.claude/projects/-workspace-project/5b0c6f1e-2f4a-4f39-9a51-0d7f3c2e8a11.jsonl",
+  "cwd": "/workspace/project",
+  "prompt_id": "6077d446-3efc-4605-8dd8-2b870f8b7b45",
+  "hook_event_name": "PreCompact",
+  "trigger": "manual",
+  "custom_instructions": null
+}

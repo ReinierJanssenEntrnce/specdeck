@@ -34,6 +34,21 @@ While Claude waits for an answer or for a plan to be approved, the line at the b
 
 You only see these decisions: answering questions and approving plans stays with the host. Viewers on an older SpecDeck version see the steps without the decisions.
 
+When Claude asks, the timeline also shows a notice of what it asks, such as *Claude wants to use Bash: npm test*, *Claude asks: Which database?* or *Claude has a plan for you to review*.
+
+## What the agent is doing
+
+Next to the session's name, a label shows whether the agent is working or waiting for the host.
+
+| Session | The label shows |
+|---|---|
+| Claude Code | Working or waiting, also while Claude shows the host a question or a plan, and while the host compacts its context with `/compact` |
+| omp | Working or waiting, as omp reports it. When omp needs the host, its own message is shown with the label, such as *Waiting for input: omp needs permission: approve Write: src/main.rs* |
+| OpenCode | *Live*: OpenCode does not report what it is doing |
+| Terminal | *Live*. While a program in the terminal that reports its state runs, such as Claude Code or Codex, the label shows whether that program is working or waiting, with its message when it needs the host, and goes back to *Live* when the program ends |
+
+Agents report their state through the terminal (the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status)), so a program shows up here only if it supports it. The host is notified when an agent or program waits for them while the SpecDeck window is in the background.
+
 ## Read the session
 
 | To | Do this |

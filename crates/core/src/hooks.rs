@@ -27,7 +27,7 @@ pub const HOOK_TOKEN_ENV: &str = "SPECDECK_HOOK_TOKEN";
 
 /// The hook events the timeline is built from. `SessionStart` is not among them: it supports
 /// only command and MCP tool hooks, and the engine knows when it started Claude Code.
-pub const HOOK_EVENTS: [&str; 9] = [
+pub const HOOK_EVENTS: [&str; 12] = [
     "SessionEnd",
     "Notification",
     "UserPromptSubmit",
@@ -35,13 +35,20 @@ pub const HOOK_EVENTS: [&str; 9] = [
     "PreToolUse",
     "PostToolUse",
     "PostToolUseFailure",
+    // Says what Claude asks permission for. The empty answer is no decision.
+    "PermissionRequest",
     "Stop",
     // A helper finished; a helper that ran in the background reports back only here.
     "SubagentStop",
+    // A manual `/compact` sends no prompt or `Stop`, only these. The empty answer does not
+    // block the compaction.
+    "PreCompact",
+    "PostCompact",
 ];
 
 /// Events that take a tool matcher.
-const TOOL_EVENTS: [&str; 3] = ["PreToolUse", "PostToolUse", "PostToolUseFailure"];
+const TOOL_EVENTS: [&str; 4] =
+    ["PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest"];
 
 /// The event name given to payloads relayed from Claude Code's status line (`/status`).
 pub const STATUS_LINE_EVENT: &str = "SpecDeckStatusLine";
@@ -251,6 +258,27 @@ mod tests {
         assert_eq!(received[0]["hook_event_name"], "Stop");
     }
 
+    /// A permission request gets an empty 204, which Claude Code takes as no decision.
+    #[tokio::test]
+    async fn permission_request_gets_an_empty_answer() {
+        let (endpoint, received) = endpoint().await;
+        let address = endpoint.url.trim_start_matches("http://").trim_end_matches("/hooks");
+        let body = r#"{"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{}}"#;
+        let request = format!(
+            "POST /hooks HTTP/1.1\r\nHost: {address}\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            endpoint.token,
+            body.len()
+        );
+        let mut stream = TcpStream::connect(address).await.unwrap();
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).await.unwrap();
+        let (head, rest) = response.split_once("\r\n\r\n").unwrap();
+        assert!(head.starts_with("HTTP/1.1 204"), "{head}");
+        assert_eq!(rest, "");
+        assert_eq!(received.lock().unwrap().len(), 1);
+    }
+
     #[tokio::test]
     async fn refuses_missing_or_wrong_token() {
         let (endpoint, received) = endpoint().await;
@@ -283,7 +311,12 @@ mod tests {
         let settings = hook_settings("http://127.0.0.1:1234/hooks");
         let hooks = settings["hooks"].as_object().unwrap();
         assert_eq!(hooks.len(), HOOK_EVENTS.len());
+        for event in ["PermissionRequest", "PreCompact", "PostCompact"] {
+            assert!(hooks.contains_key(event), "{event}");
+        }
         assert_eq!(hooks["PreToolUse"][0]["matcher"], "*");
+        assert_eq!(hooks["PermissionRequest"][0]["matcher"], "*");
+        assert!(hooks["PostCompact"][0].get("matcher").is_none());
         assert!(hooks["Stop"][0].get("matcher").is_none());
         let handler = &hooks["Stop"][0]["hooks"][0];
         assert_eq!(handler["type"], "http");
