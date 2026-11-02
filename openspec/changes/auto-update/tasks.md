@@ -18,12 +18,12 @@
 - [x] 3.1 Add the update state, `updateStatus`, `restartToUpdate` and `setCheckUpdates` to the bridge (`types.ts`, `tauri.ts`, `demo.ts`); verify `pnpm typecheck` and the demo bridge offering an update in `?demo=start`
 - [x] 3.2 Show the update notice on the start screen and the "Update ready" button in the session toolbar, with dismiss (until the next start or a newer version), and the restart question while hosting or watching using the existing confirm dialog (spec: Restart to update, Updating during a session); verify with UI tests for: notice shown when ready, dismissed, restart without a session, host confirms, viewer cancels, and the a11y test for the notice and the question
 - [x] 3.3 Add **Check for updates automatically** to `SettingsScreen.tsx`, hidden when updates are disabled for this install (spec: Update setting); verify with `SettingsScreen.test.tsx` cases for on, off and hidden, and the a11y test
-- [ ] 3.4 Describe updates in the docs site: the Install page's Update section (which installs update themselves, Restart to update, the macOS Local Network prompt after an update while releases are ad-hoc signed) and the setting on the Settings page; verify with `just docs-build` and the link check
+- [x] 3.4 Describe updates in the docs site: the Install page's Update section (which installs update themselves, Restart to update, the macOS Local Network prompt after an update while releases are ad-hoc signed) and the setting on the Settings page; verify with `just docs-build` and the link check
 
 ## 4. Release workflow
 
 - [ ] 4.1 In `release.yml`, when `TAURI_SIGNING_PRIVATE_KEY` is set, build with `createUpdaterArtifacts` on (merged with the Windows signing config), build `app,dmg` on macOS, and upload the update files and `.sig` files under the stable names in design decision 4; without the secret, build as today; verify with a prerelease tag on a branch that the draft holds the update files and signatures, and that a run without the secret still succeeds
-- [ ] 4.2 Add a script that writes `latest.json` from the uploaded signatures (version, date, notes URL, per-platform versioned URL and signature) and run it in the publish job before publishing; verify with a unit test of the script on sample signatures and by checking the prerelease's `latest.json` against the uploaded files
+- [x] 4.2 Add a script that writes `latest.json` from the uploaded signatures (version, date, notes URL, per-platform versioned URL and signature) and run it in the publish job before publishing; verify with a unit test of the script on sample signatures and by checking the prerelease's `latest.json` against the uploaded files
 - [x] 4.3 Add `auto_updates true` to `scripts/render-cask.sh`; verify the rendered cask with `brew style` or by rendering it and reading the output
 
 ## 5. Integration
