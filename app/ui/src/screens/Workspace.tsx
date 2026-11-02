@@ -29,6 +29,8 @@ interface Props {
   /** The viewer chose not to see the terminal. It keeps running out of sight, so it comes back at
    * once with everything it received. */
   terminalHidden?: boolean;
+  /** Screen readers read the terminal. */
+  screenReader?: boolean;
   /** Steps in plain words, or every tool call in detail. */
   steps?: Steps;
   timelineSupported: boolean;
@@ -280,6 +282,7 @@ export const Workspace = forwardRef<WorkspaceHandle, Props>(function Workspace(p
         <TerminalView
           ref={terminal}
           mode={props.mode}
+          screenReader={props.screenReader}
           onData={props.onInput}
           onResize={props.onResize}
           onThemeColors={props.onThemeColors}

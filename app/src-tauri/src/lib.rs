@@ -8,9 +8,11 @@ mod tray;
 mod updates;
 mod viewer;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::SystemTime;
 
 use serde::Serialize;
 use specdeck_core::agent;
@@ -29,6 +31,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::StateFlags;
 
 use crate::host::{HostEvent, HostNotice, HostRuntime, SharingState, StartOptions, Summary};
@@ -36,6 +39,9 @@ use crate::services::{ServiceCheck, Services};
 use crate::settings::{Settings, View, ZOOM_DEFAULT, zoom_in, zoom_out};
 use crate::updates::{GitHubFeed, Outcome, UpdateState, Updates};
 use crate::viewer::{EndReason, ViewEvent, ViewerRuntime};
+
+/// An agent's version, with its executable's modification time when it was read.
+type ReadVersion = (Option<SystemTime>, Option<String>);
 
 struct AppState {
     settings_path: PathBuf,
@@ -52,6 +58,7 @@ struct AppState {
     join_link: Mutex<Option<JoinLink>>,
     /// New releases: whether one is being fetched or is ready to install.
     updates: Arc<Updates<tauri_plugin_updater::Update>>,
+    versions: Mutex<HashMap<PathBuf, ReadVersion>>,
 }
 
 impl AppState {
@@ -81,6 +88,11 @@ struct AgentInfo {
     name: &'static str,
     installed: bool,
     has_timeline: bool,
+    reports_status: bool,
+    /// The executable, or for Terminal the shell it starts.
+    path: Option<PathBuf>,
+    /// Where to read how to install it.
+    install_page: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -117,6 +129,8 @@ struct Profile {
     /// This install updates itself, so Settings offers the update setting.
     updates_itself: bool,
     check_updates: bool,
+    /// Screen readers read the terminal.
+    screen_reader: bool,
 }
 
 /// The agents to choose from, in display order: the coding agents, then Terminal.
@@ -128,6 +142,9 @@ fn agent_infos(env: &Environment) -> Vec<AgentInfo> {
             name: found.agent.display_name(),
             installed: found.executable.is_some(),
             has_timeline: found.agent.has_timeline(),
+            reports_status: found.agent.reports_status(),
+            path: found.executable,
+            install_page: agent::install_page(found.agent),
         })
         .collect()
 }
@@ -166,7 +183,75 @@ fn profile(state: &AppState) -> Profile {
         in_session,
         updates_itself: state.updates.state() != UpdateState::Disabled,
         check_updates: settings.check_updates,
+        screen_reader: settings.screen_reader,
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentVersion {
+    agent: AgentId,
+    /// `None` when the agent printed none in time.
+    version: Option<String>,
+}
+
+/// The versions of the installed agents, read in parallel. Each executable is asked once, and
+/// again only after it changed, so the start screen asks for them after it is shown.
+#[tauri::command]
+async fn agent_versions(state: State<'_, AppState>) -> Result<Vec<AgentVersion>, String> {
+    let env = state.environment();
+    let installed: Vec<(AgentId, PathBuf, Option<SystemTime>)> = agent::detect(&env)
+        .into_iter()
+        .filter(|found| found.agent != AgentId::Terminal)
+        .filter_map(|found| {
+            let executable = found.executable?;
+            let modified = executable.metadata().and_then(|meta| meta.modified()).ok();
+            Some((found.agent, executable, modified))
+        })
+        .collect();
+    let missing: Vec<(PathBuf, Option<SystemTime>)> = {
+        let cache = state.versions.lock().unwrap();
+        installed
+            .iter()
+            .filter(|(_, path, modified)| cache.get(path).is_none_or(|(at, _)| at != modified))
+            .map(|(_, path, modified)| (path.clone(), *modified))
+            .collect()
+    };
+    if !missing.is_empty() {
+        let read = tauri::async_runtime::spawn_blocking(move || {
+            std::thread::scope(|scope| {
+                let readers: Vec<_> = missing
+                    .into_iter()
+                    .map(|(path, modified)| {
+                        let env = &env;
+                        scope.spawn(move || {
+                            let version = agent::read_version(&path, env, agent::VERSION_TIMEOUT);
+                            (path, (modified, version))
+                        })
+                    })
+                    .collect();
+                readers.into_iter().filter_map(|reader| reader.join().ok()).collect::<Vec<_>>()
+            })
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        state.versions.lock().unwrap().extend(read);
+    }
+    let cache = state.versions.lock().unwrap();
+    Ok(installed
+        .into_iter()
+        .map(|(agent, path, _)| AgentVersion {
+            agent,
+            version: cache.get(&path).and_then(|(_, version)| version.clone()),
+        })
+        .collect())
+}
+
+/// Opens the install page of `agent` in the browser; only the pages the app lists.
+#[tauri::command]
+async fn open_install_page(app: AppHandle, agent: AgentId) -> Result<(), String> {
+    let page = agent::install_page(agent).ok_or("This choice needs nothing installed.")?;
+    app.opener().open_url(page, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -198,6 +283,21 @@ async fn set_notifications(
     {
         let mut settings = state.settings.lock().unwrap();
         settings.notifications = enabled;
+        state.save(&settings);
+    }
+    settings_changed(&app);
+    Ok(profile(&state))
+}
+
+#[tauri::command]
+async fn set_screen_reader(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<Profile, String> {
+    {
+        let mut settings = state.settings.lock().unwrap();
+        settings.screen_reader = enabled;
         state.save(&settings);
     }
     settings_changed(&app);
@@ -970,6 +1070,7 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
@@ -1000,6 +1101,7 @@ pub fn run() {
                 translucent: AtomicBool::new(false),
                 join_link: Mutex::new(None),
                 updates: updates.clone(),
+                versions: Mutex::default(),
             });
             if updates.state() != UpdateState::Disabled {
                 start_update_checks(app.handle(), updates);
@@ -1046,6 +1148,9 @@ pub fn run() {
             set_username,
             set_notifications,
             set_check_updates,
+            set_screen_reader,
+            agent_versions,
+            open_install_page,
             update_status,
             restart_to_update,
             set_view,
@@ -1144,6 +1249,7 @@ mod tests {
             translucent: AtomicBool::new(false),
             join_link: Mutex::new(None),
             updates: Arc::new(Updates::new(false, |_| {})),
+            versions: Mutex::default(),
         }
     }
 

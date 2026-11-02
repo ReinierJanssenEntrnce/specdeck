@@ -88,6 +88,25 @@ export function SettingsScreen() {
           </span>
         </div>
       </div>
+      <div className="row">
+        <span id="settings-screen-reader">Screen reader</span>
+        <div>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={profile.screenReader}
+              aria-labelledby="settings-screen-reader"
+              aria-describedby="settings-screen-reader-hint"
+              onChange={async (event) => setProfile(await bridge.setScreenReader(event.target.checked))}
+            />
+            Screen reader support
+          </label>
+          <span id="settings-screen-reader-hint" className="field-hint">
+            Lets VoiceOver, Narrator and Orca read the terminal. While it is on, typing in the terminal of a session you host can
+            repeat text.
+          </span>
+        </div>
+      </div>
       {profile.updatesItself && (
         <div className="row">
           <span id="settings-updates">Updates</span>

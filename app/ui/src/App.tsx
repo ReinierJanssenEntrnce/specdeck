@@ -134,6 +134,7 @@ export function App() {
         <HostScreen
           view={profile.view}
           onView={setView}
+          screenReader={profile.screenReader}
           onEnded={() => refresh().then(() => setScreen({ kind: 'start' }))}
           update={updateButton}
         />
@@ -145,6 +146,7 @@ export function App() {
           server={screen.server}
           view={profile.view}
           onView={setView}
+          screenReader={profile.screenReader}
           update={updateButton}
           onLeave={(retry) =>
             setScreen(retry ? { kind: 'start', code: retry.code, server: retry.server, joinError: retry.message } : { kind: 'start' })

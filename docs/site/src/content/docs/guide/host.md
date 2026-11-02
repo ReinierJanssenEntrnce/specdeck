@@ -5,7 +5,7 @@ description: Share a coding agent or your terminal with your team.
 
 ## Start a session
 
-1. Under **Host a session** (or **File › Host a Session…**, **⌘N** on macOS, **Ctrl+Shift+N** on Windows and Linux), pick the **agent**, or **Terminal** to share your shell without an agent. Agents that are not installed are shown as *Not installed*. SpecDeck remembers what you chose last.
+1. Under **Host a session** (or **File › Host a Session…**, **⌘N** on macOS, **Ctrl+Shift+N** on Windows and Linux), pick the **agent**, or **Terminal** to share your shell without an agent. Each choice shows what your viewers get with it (a timeline with diffs and plans, the agent's status, or the terminal only), and for an installed agent its version and where it was found; Terminal shows the shell it starts. Agents that are not installed are listed below the choices under *Not installed*; select one to open its install instructions in your browser. SpecDeck remembers what you chose last.
 2. Select one of your **recent folders**, or **Choose a folder and start…** and pick the project folder the agent or shell should start in. Recent folders list the last five folders you hosted in, newest first; they are also under **File › Open Recent**. Select **×** next to one to remove it from the list (the folder itself is not touched).
 3. The agent or your shell starts in the terminal. Use it as you normally would. In a terminal session, typing `exit` ends the shell; the session stays open for viewers to read until you end it.
    - The first time in a new folder, Claude Code asks whether you trust it. Answer it in the terminal.
@@ -29,7 +29,7 @@ You host one session at a time. To host or join another, end this one first.
 | Limit the number of viewers | In **People**, set **Max viewers** (1 to 20). Lowering it never disconnects anyone already watching |
 | End the session for everyone | Select **End session** and confirm. The agent or shell stops and the invite code stops working |
 
-The status next to the folder name shows what the agent is doing: **working**, **waiting for input**, or **exited**. For OpenCode and omp it shows **Live**, because their activity is not shared; a terminal session also shows **Live**, and **Shell exited** once you exit the shell. When Claude Code asks your permission, for example to run a command, the status shows **waiting** and the timeline shows the question, so viewers see why it paused.
+The status next to the folder name shows what the agent is doing: **working**, **waiting for input**, or **exited**. For omp, Codex, Grok and pi it shows working or waiting when the agent reports it, and **Live** otherwise; OpenCode always shows **Live**, because its activity is not shared; a terminal session also shows **Live**, and **Shell exited** once you exit the shell. When Claude Code asks your permission, for example to run a command, the status shows **waiting** and the timeline shows the question, so viewers see why it paused.
 
 If you set up your own Claude Code status line, it keeps showing in the terminal. SpecDeck reads the same figures from it for the bar at the bottom of the window, which everyone in the session sees, including your 5-hour and 7-day limits.
 

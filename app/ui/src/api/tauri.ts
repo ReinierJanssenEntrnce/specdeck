@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { Bridge } from './bridge';
 import type { MenuCommand } from '../menu/menu';
-import type { HostEvent, JoinLink, Profile, ServiceCheck, UpdateState, ViewEvent } from './types';
+import type { AgentVersion, HostEvent, JoinLink, Profile, ServiceCheck, UpdateState, ViewEvent } from './types';
 
 function channel<T>(handler: (message: T) => void): Channel<T> {
   const ch = new Channel<T>();
@@ -29,9 +29,12 @@ function bytesChannel(handler: (data: ArrayBuffer) => void): Channel<ArrayBuffer
 
 export const tauriBridge: Bridge = {
   getProfile: () => invoke<Profile>('get_profile'),
+  agentVersions: () => invoke<AgentVersion[]>('agent_versions'),
+  openInstallPage: (agent) => invoke('open_install_page', { agent }),
   setUsername: (username) => invoke<Profile>('set_username', { username }),
   setNotifications: (enabled) => invoke<Profile>('set_notifications', { enabled }),
   setCheckUpdates: (enabled) => invoke<Profile>('set_check_updates', { enabled }),
+  setScreenReader: (enabled) => invoke<Profile>('set_screen_reader', { enabled }),
   updateStatus: () => invoke<UpdateState>('update_status'),
   onUpdate: (handler) => {
     const stop = listen<UpdateState>('update-changed', (event) => handler(event.payload));

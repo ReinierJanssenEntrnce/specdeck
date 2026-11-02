@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/nickhartjes/specdeck)](https://github.com/nickhartjes/specdeck/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-SpecDeck lets one person (the **host**) run a coding agent (Claude Code, OpenCode or omp) on their computer while teammates (the **viewers**) follow along from anywhere. Viewers see the terminal and, for Claude Code, a timeline of prompts, answers, tool calls and file diffs. They join with an invite code and are read-only: only the host types into the agent, on the host's own login.
+SpecDeck lets one person (the **host**) run a coding agent (Claude Code, OpenCode, omp, Codex, Grok or pi) on their computer while teammates (the **viewers**) follow along from anywhere. Viewers see the terminal and, for Claude Code, a timeline of prompts, answers, tool calls and file diffs. They join with an invite code and are read-only: only the host types into the agent, on the host's own login.
 
 SpecDeck is a native app built on Tauri 2 with a Rust session engine.
 
@@ -69,7 +69,7 @@ See [`deploy/k8s/README.md`](deploy/k8s/README.md) for ports, secrets and the di
 
 [`ci.yml`](.github/workflows/ci.yml) runs `just check` and `just package` on macOS, Windows and Ubuntu, and fails when an installer is larger than 25 MB ([`scripts/check-installer-size.sh`](scripts/check-installer-size.sh)). In between it runs `just capacity` on its own and reports the result without failing on it: on Ubuntu runners the 20-viewer measurement still varies too much from run to run.
 [`nix.yml`](.github/workflows/nix.yml) builds the Nix flake on every push to main, and on pull requests that change what the Nix build depends on (lockfiles, manifests, `nix/`). Rust caches are saved from main only; pull requests reuse them.
-[Renovate](renovate.json) keeps dependencies up to date. When it changes the npm dependencies, [`renovate-nix-hash.yml`](.github/workflows/renovate-nix-hash.yml) updates their hash in `nix/package.nix` on its branch and starts CI and Nix for that commit.
+[Renovate](renovate.json) keeps dependencies up to date, and on Monday mornings also refreshes the indirect ones in `Cargo.lock` and `pnpm-lock.yaml`. When it changes the npm dependencies, [`renovate-nix-hash.yml`](.github/workflows/renovate-nix-hash.yml) updates their hash in `nix/package.nix` on its branch and starts CI and Nix for that commit.
 
 ## Releases
 

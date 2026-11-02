@@ -8,9 +8,7 @@
 use std::time::Duration;
 
 use datachannel::ConnectionState;
-use specdeck_protocol::control::{
-    self, HostMessage, PROTOCOL_VERSION, Participant, RefusalReason, ViewerMessage,
-};
+use specdeck_protocol::control::{self, HostMessage, Participant, RefusalReason, ViewerMessage};
 use specdeck_protocol::frames::{Frame, FrameVerifier, Record};
 use specdeck_protocol::invite::InviteCode;
 use specdeck_protocol::signal_auth::{DescriptionKind, SignedDescription};
@@ -36,6 +34,9 @@ pub struct ViewerConfig {
     pub peer: PeerConfig,
     /// Usually [`CONNECT_TIMEOUT`].
     pub connect_timeout: Duration,
+    /// The session protocol this viewer says it speaks; [`PROTOCOL_VERSION`] except in tests of
+    /// mismatched apps.
+    pub protocol_version: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -331,7 +332,7 @@ impl Viewer {
                         PeerEvent::Open(Channel::Control) => {
                             connected = true;
                             let hello = ViewerMessage::Hello {
-                                protocol_version: PROTOCOL_VERSION,
+                                protocol_version: self.config.protocol_version,
                                 username: self.config.username.clone(),
                                 last_output_seq: self.next_record.checked_sub(1),
                                 last_event_seq: self.next_event.checked_sub(1),
@@ -448,6 +449,7 @@ impl Viewer {
 
 #[cfg(test)]
 mod tests {
+    use specdeck_protocol::control::PROTOCOL_VERSION;
     use specdeck_protocol::frames::SessionKey;
 
     use super::*;
@@ -460,6 +462,7 @@ mod tests {
                 username: "v".into(),
                 peer: PeerConfig::default(),
                 connect_timeout: CONNECT_TIMEOUT,
+                protocol_version: PROTOCOL_VERSION,
             },
             code: InviteCode::generate(),
             events,

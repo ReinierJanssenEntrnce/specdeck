@@ -19,6 +19,7 @@ use specdeck_core::peer::PeerConfig;
 use specdeck_core::session::{HostConfig, HostSession};
 use specdeck_core::sharing::{Sharing, SharingConfig, SharingEvent};
 use specdeck_core::viewer::{CONNECT_TIMEOUT, ViewerConfig, ViewerEvent, ViewerSession};
+use specdeck_protocol::control::PROTOCOL_VERSION;
 use specdeck_protocol::frames::Record;
 use specdeck_protocol::invite::InviteCode;
 use specdeck_protocol::timeline::{Entry, Permission};
@@ -83,6 +84,7 @@ impl Watch {
                 username: username.into(),
                 peer: loopback(),
                 connect_timeout: CONNECT_TIMEOUT,
+                protocol_version: PROTOCOL_VERSION,
             },
         );
         Self {

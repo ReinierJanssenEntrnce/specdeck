@@ -1,5 +1,5 @@
 //! Starts an agent the way the app does and reports what happened, for manual checks:
-//! `cargo run -p specdeck-core --example launch -- <claude-code|open-code|omp> [folder]`
+//! `cargo run -p specdeck-core --example launch -- <claude-code|open-code|omp|codex|grok|pi|terminal> [folder]`
 
 use std::io::Read;
 use std::sync::mpsc;
@@ -17,8 +17,11 @@ fn main() {
         Some("claude-code") => AgentId::ClaudeCode,
         Some("open-code") => AgentId::OpenCode,
         Some("omp") => AgentId::Omp,
+        Some("codex") => AgentId::Codex,
+        Some("grok") => AgentId::Grok,
+        Some("pi") => AgentId::Pi,
         Some("terminal") => AgentId::Terminal,
-        _ => panic!("usage: launch <claude-code|open-code|omp|terminal> [folder]"),
+        _ => panic!("usage: launch <claude-code|open-code|omp|codex|grok|pi|terminal> [folder]"),
     };
     let folder = args.next().map_or_else(|| std::env::current_dir().unwrap(), Into::into);
 

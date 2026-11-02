@@ -85,6 +85,8 @@ interface Props {
   /** How this person follows sessions; null until they answered the first-join question. */
   view: View | null;
   onView: (view: View) => void;
+  /** Screen readers read the terminal; the setting in Settings. */
+  screenReader?: boolean;
   /** Back to the start screen; with the code and a message when the join did not work. */
   onLeave: (retry?: { code: string; server?: string; message: string }) => void;
   /** The sharing service of a join link the user agreed to join through; their own when unset. */
@@ -94,7 +96,7 @@ interface Props {
 }
 
 /** Watching someone else's session, read-only. */
-export function ViewerScreen({ code, server, view, onView, onLeave , update }: Props) {
+export function ViewerScreen({ code, server, view, onView, screenReader = false, onLeave , update }: Props) {
   const bridge = useBridge();
   const [asking, setAsking] = useState(view === null);
   const shown = view ?? DEVELOPER_VIEW;
@@ -191,6 +193,7 @@ export function ViewerScreen({ code, server, view, onView, onLeave , update }: P
           mode="viewer"
           agentName={agentName}
           terminal={terminal}
+          screenReader={screenReader}
           steps={shown.steps}
           terminalHidden={!shown.terminal && state.timelineSupported}
           timelineSupported={state.timelineSupported}

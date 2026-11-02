@@ -484,6 +484,39 @@ mod tests {
     }
 
     #[test]
+    fn codex_recording() {
+        use State::*;
+        // Codex reports without being asked, and is idle again after a turn as well as done.
+        let (queries, states) = recording("codex.bin");
+        assert_eq!(queries, 0);
+        let states: Vec<State> = states.into_iter().map(|(state, ..)| state).collect();
+        assert_eq!(states, [Idle, Working, Idle, Working, Done, Idle, Clear]);
+    }
+
+    #[test]
+    fn pi_recording() {
+        use State::*;
+        let (queries, states) = recording("pi.bin");
+        assert_eq!(queries, 1);
+        let states: Vec<State> = states.into_iter().map(|(state, ..)| state).collect();
+        assert_eq!(states, [Idle, Working, Done, Clear]);
+    }
+
+    #[test]
+    fn grok_recording() {
+        use State::*;
+        let (queries, states) = recording("grok.bin");
+        assert_eq!(queries, 1);
+        // Its folder trust question is a permission request.
+        assert_eq!(
+            states[0],
+            (Blocked, Some(Kind::Permission), Some("Trust this folder?".to_owned()))
+        );
+        let states: Vec<State> = states.into_iter().map(|(state, ..)| state).collect();
+        assert_eq!(states, [Blocked, Idle, Working, Working, Working, Working, Done]);
+    }
+
+    #[test]
     fn known_app_names() {
         assert_eq!(app_name("claude-code"), Some("Claude Code"));
         assert_eq!(app_name("grok-build"), Some("Grok"));

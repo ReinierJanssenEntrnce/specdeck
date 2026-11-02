@@ -12,7 +12,7 @@ vi.mock('../terminal/TerminalView', () => ({ TerminalView: TerminalViewStub }));
 
 let emit: (event: HostEvent) => void = () => {};
 
-async function setup(overrides: Partial<Bridge> = {}) {
+async function setup(overrides: Partial<Bridge> = {}, screenReader?: boolean) {
   const bridge = fakeBridge('host', overrides);
   const base = bridge.hostAttach;
   bridge.hostAttach = vi.fn(async (sink, events) => {
@@ -20,7 +20,7 @@ async function setup(overrides: Partial<Bridge> = {}) {
     await base(sink, events);
   });
   const onEnded = vi.fn();
-  renderWith(bridge, <HostScreen view={null} onView={vi.fn()} onEnded={onEnded} />);
+  renderWith(bridge, <HostScreen view={null} onView={vi.fn()} screenReader={screenReader} onEnded={onEnded} />);
   await within(screen.getByRole('banner')).findByText('webshop');
   return { bridge, onEnded };
 }
@@ -46,6 +46,16 @@ describe('host screen', () => {
     expect(bridge.hostInput).toHaveBeenCalledWith('ls\r');
     act(() => (terminal.props.onResize as (c: number, r: number) => void)(120, 40));
     expect(bridge.hostResize).toHaveBeenCalledWith(120, 40);
+  });
+
+  it('leaves screen reader support off in the terminal unless it is turned on', async () => {
+    await setup();
+    await waitFor(() => expect(terminal.props.screenReader).toBe(false));
+  });
+
+  it('turns screen reader support on in the terminal when it is set', async () => {
+    await setup({}, true);
+    await waitFor(() => expect(terminal.props.screenReader).toBe(true));
   });
 
   it('copies the code and the join link', async () => {

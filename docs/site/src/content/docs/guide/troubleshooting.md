@@ -14,7 +14,7 @@ SpecDeck says why on the start screen:
 | Too many attempts | Several wrong codes were tried from your network. Wait a minute |
 | SpecDeck cannot reach its sharing service | Check your internet connection, and the [sharing service in Settings](/specdeck/guide/settings/#sharing-service) |
 | Your network does not allow the connection | Your network blocks UDP. Try another network, such as your phone's hotspot |
-| Update SpecDeck to join / The host needs to update | You and the host use versions that do not match |
+| Update SpecDeck to join / The host needs to update | You and the host use versions that do not match. Versions that offer Codex, Grok and pi as agents cannot connect to older versions, in either direction |
 
 A code typed on its own always uses your own sharing service. If the host uses another one, the code does not work for you: ask for the link instead (see [Through another sharing service](/specdeck/guide/join/#through-another-sharing-service)).
 

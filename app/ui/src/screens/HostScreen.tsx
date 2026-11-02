@@ -13,7 +13,15 @@ import { Toast, useToast } from '../components/Toast';
 import { formatCode, joinLink } from '../model/code';
 import { Workspace, type WorkspaceHandle } from './Workspace';
 
-export const AGENT_NAMES: Record<AgentId, string> = { 'claude-code': 'Claude Code', 'open-code': 'OpenCode', omp: 'omp', terminal: 'Terminal' };
+export const AGENT_NAMES: Record<AgentId, string> = {
+  'claude-code': 'Claude Code',
+  'open-code': 'OpenCode',
+  omp: 'omp',
+  codex: 'Codex',
+  grok: 'Grok',
+  pi: 'pi',
+  terminal: 'Terminal',
+};
 
 interface State {
   agent: AgentId | null;
@@ -81,12 +89,14 @@ interface Props {
   /** How the host follows the session; the host's terminal is always shown. */
   view: View | null;
   onView: (view: View) => void;
+  /** Screen readers read the terminal; the setting in Settings. */
+  screenReader?: boolean;
   onEnded: () => void;
   /** Shown in the toolbar when a new SpecDeck is ready to install. */
   update?: ReactNode;
 }
 
-export function HostScreen({ view, onView, onEnded , update }: Props) {
+export function HostScreen({ view, onView, screenReader = false, onEnded , update }: Props) {
   const bridge = useBridge();
   const workspace = useRef<WorkspaceHandle>(null);
   const [state, dispatch] = useReducer(hostReducer, initial);
@@ -188,6 +198,7 @@ export function HostScreen({ view, onView, onEnded , update }: Props) {
         mode="host"
         agentName={agentName}
         terminal={terminal}
+        screenReader={screenReader}
         steps={(view ?? DEVELOPER_VIEW).steps}
         timelineSupported={state.timelineSupported}
         timeline={state.timeline}

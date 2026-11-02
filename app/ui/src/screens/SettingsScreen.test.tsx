@@ -38,6 +38,23 @@ describe('settings window', () => {
   });
 });
 
+describe('screen reader setting', () => {
+  it('is off by default and turns on at once', async () => {
+    const bridge = fakeBridge();
+    renderWith(bridge, <SettingsScreen />);
+    const toggle = await screen.findByRole('checkbox', { name: 'Screen reader' });
+    expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+    expect(bridge.setScreenReader).toHaveBeenCalledWith(true);
+    await waitFor(() => expect(toggle).toBeChecked());
+  });
+
+  it('shows when it is on', async () => {
+    renderWith(fakeBridge('start', { getProfile: async () => ({ ...demoProfile, screenReader: true }) }), <SettingsScreen />);
+    expect(await screen.findByRole('checkbox', { name: 'Screen reader' })).toBeChecked();
+  });
+});
+
 describe('update setting', () => {
   it('is on by default and turns off at once', async () => {
     const bridge = fakeBridge();

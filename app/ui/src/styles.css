@@ -151,16 +151,38 @@ button { font: inherit; color: inherit; }
 .card .lead { margin: 2px 0 0; color: var(--text-muted); }
 .section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
 
-.agents { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.agents { display: grid; gap: 6px; }
 .agent {
-  position: relative; display: grid; gap: 2px; text-align: left; padding: 10px 12px;
-  border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); cursor: pointer;
+  display: grid; grid-template-columns: 14px 20px 1fr; gap: 1px 10px; align-items: center;
+  text-align: left; padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface); cursor: pointer; transition: border-color 120ms, background 120ms;
 }
-.agent:hover:not(:disabled) { background: var(--hover); }
+.agent:hover { background: var(--hover); }
 .agent[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-soft); }
-.agent:disabled { cursor: default; opacity: 0.55; }
-.agent strong { font-weight: 600; }
-.agent span { color: var(--text-muted); font-size: 11.5px; }
+.agent-radio {
+  width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--border-strong); grid-row: span 3; align-self: start;
+  margin-top: 2px; box-sizing: border-box;
+}
+.agent[aria-checked="true"] .agent-radio { border: 4px solid var(--accent); }
+.agent-icon { width: 18px; height: 18px; color: var(--text-muted); grid-row: span 3; align-self: start; margin-top: 0; }
+.agent[aria-checked="true"] .agent-icon { color: var(--accent); }
+.agent-name { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.agent-name strong { font-weight: 600; }
+.agent-version { color: var(--text-faint); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.agent-offers { color: var(--text-muted); font-size: 11.5px; }
+/* Long paths lose their start, so the program's name stays in sight. */
+.agent-path {
+  color: var(--text-faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  direction: rtl; text-align: left;
+}
+.agents-missing { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-faint); font-size: 11.5px; }
+.agents-missing > span { margin-right: 2px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid var(--border);
+  border-radius: 999px; background: none; color: var(--text-muted); font: inherit; font-size: 11.5px; cursor: pointer;
+}
+.chip:hover { background: var(--hover); color: var(--text); }
+.chip svg { width: 11px; height: 11px; }
 
 .recent { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .recent li { display: flex; align-items: center; border-radius: 6px; }

@@ -3,16 +3,20 @@
 
 import type { MenuCommand } from '../menu/menu';
 import { createContext, useContext } from 'react';
-import type { AgentId, HostEvent, JoinLink, Profile, ServiceCheck, UpdateState, View, ViewEvent } from './types';
+import type { AgentId, AgentVersion, HostEvent, JoinLink, Profile, ServiceCheck, UpdateState, View, ViewEvent } from './types';
 
 /** Receives terminal data as the binary stream described in src/terminal/stream.ts. */
 export type TerminalSink = (data: ArrayBuffer) => void;
 
 export interface Bridge {
   getProfile(): Promise<Profile>;
+  /** The installed agents' versions; slow the first time, so asked for after the start screen shows. */
+  agentVersions(): Promise<AgentVersion[]>;
+  openInstallPage(agent: AgentId): Promise<void>;
   setUsername(username: string): Promise<Profile>;
   setNotifications(enabled: boolean): Promise<Profile>;
   setCheckUpdates(enabled: boolean): Promise<Profile>;
+  setScreenReader(enabled: boolean): Promise<Profile>;
   updateStatus(): Promise<UpdateState>;
   /** Calls `handler` whenever the update state changes; returns a function that stops listening. */
   onUpdate(handler: (state: UpdateState) => void): () => void;

@@ -15,12 +15,15 @@ Viewers are read-only. Only the host types into the agent, and the agent runs on
 
 | Choice | What viewers see |
 |---|---|
-| Claude Code (`claude`) | The terminal, plus the timeline, file diffs and the list of touched files |
-| OpenCode (`opencode`) | The terminal |
-| omp (`omp`) | The terminal |
+| [Claude Code](https://code.claude.com/docs/en/setup) (`claude`) | The terminal, plus the timeline, file diffs and the list of touched files |
+| [OpenCode](https://opencode.ai/docs/) (`opencode`) | The terminal |
+| [omp](https://omp.sh) (`omp`) | The terminal, and whether the agent is working or waiting |
+| [Codex](https://developers.openai.com/codex/cli) (`codex`) | The terminal, and whether the agent is working or waiting |
+| [Grok](https://x.ai/cli) (`grok`) | The terminal, and whether the agent is working or waiting |
+| [pi](https://github.com/earendil-works/pi) (`pi`) | The terminal, and whether the agent is working or waiting |
 | Terminal | Your own shell: your login shell on macOS and Linux, PowerShell on Windows. Nothing to install |
 
-Check an agent by running it in a terminal: it should start without asking you to log in. On **Windows**, Claude Code also needs **Git for Windows** (Git Bash).
+Check an agent by running it in a terminal: it should start without asking you to log in. On **Windows**, Claude Code also needs **Git for Windows** (Git Bash), and pi needs a bash: Git Bash, or one from MSYS2, Cygwin or WSL.
 
 ## Set your name
 
