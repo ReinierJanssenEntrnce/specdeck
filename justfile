@@ -20,6 +20,7 @@ check:
     pnpm lint
     pnpm typecheck
     pnpm test
+    node --test 'scripts/*.test.mjs'
 
 # Format the Rust code
 fmt:

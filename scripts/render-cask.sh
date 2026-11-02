@@ -39,6 +39,8 @@ cask "specdeck" do
     strategy :github_latest
   end
 
+  # The app updates itself (auto-update design decision 5); brew upgrade --greedy still works.
+  auto_updates true
   depends_on macos: ">= :big_sur"
 
   app "SpecDeck.app"

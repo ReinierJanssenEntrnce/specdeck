@@ -1,6 +1,6 @@
 //! What the app remembers between runs: the user's name, recent folders, last used agent,
-//! whether to show notifications, how the user follows sessions, their sharing service and how
-//! far the main window is zoomed.
+//! whether to show notifications, how the user follows sessions, their sharing service, how
+//! far the main window is zoomed and whether to check for updates.
 //! Stored as JSON in the app's config directory.
 
 use std::path::{Path, PathBuf};
@@ -29,6 +29,8 @@ pub struct Settings {
     pub sharing_service: Option<String>,
     /// The main window's zoom in percent; one level whether hosting or viewing.
     pub zoom: u16,
+    /// Check for and download new releases in the background; the menu item checks anyway.
+    pub check_updates: bool,
 }
 
 /// How a participant follows a session (`viewer-views` design decision 4).
@@ -58,6 +60,7 @@ impl Default for Settings {
             view: None,
             sharing_service: None,
             zoom: ZOOM_DEFAULT,
+            check_updates: true,
         }
     }
 }
@@ -238,6 +241,23 @@ mod tests {
         settings.sharing_service = Some("wss://specdeck.example.com/signal".into());
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path), settings);
+    }
+
+    #[test]
+    fn update_checks_are_on_unless_turned_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        // Settings saved before the option existed.
+        std::fs::write(&path, br#"{"username":"nick","notifications":false}"#).unwrap();
+        let mut settings = Settings::load(&path);
+        assert!(settings.check_updates);
+
+        settings.check_updates = false;
+        settings.save(&path).unwrap();
+        assert!(!Settings::load(&path).check_updates);
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["checkUpdates"], false);
     }
 
     #[test]

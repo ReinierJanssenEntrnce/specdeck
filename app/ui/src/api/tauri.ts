@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { Bridge } from './bridge';
 import type { MenuCommand } from '../menu/menu';
-import type { HostEvent, JoinLink, Profile, ServiceCheck, ViewEvent } from './types';
+import type { HostEvent, JoinLink, Profile, ServiceCheck, UpdateState, ViewEvent } from './types';
 
 function channel<T>(handler: (message: T) => void): Channel<T> {
   const ch = new Channel<T>();
@@ -31,6 +31,13 @@ export const tauriBridge: Bridge = {
   getProfile: () => invoke<Profile>('get_profile'),
   setUsername: (username) => invoke<Profile>('set_username', { username }),
   setNotifications: (enabled) => invoke<Profile>('set_notifications', { enabled }),
+  setCheckUpdates: (enabled) => invoke<Profile>('set_check_updates', { enabled }),
+  updateStatus: () => invoke<UpdateState>('update_status'),
+  onUpdate: (handler) => {
+    const stop = listen<UpdateState>('update-changed', (event) => handler(event.payload));
+    return () => void stop.then((unlisten) => unlisten());
+  },
+  restartToUpdate: () => invoke('restart_to_update'),
   setView: (view) => invoke<Profile>('set_view', { view }),
   setSharingService: (service) => invoke<Profile>('set_sharing_service', { service }),
   checkSharingService: (service) => invoke<ServiceCheck>('check_sharing_service', { service }),

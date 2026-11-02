@@ -31,6 +31,8 @@ export const demoProfile: Profile = {
   builtInService: 'wss://specdeck.hartj.es/signal',
   serviceOverridden: false,
   inSession: false,
+  updatesItself: true,
+  checkUpdates: true,
 };
 
 export const demoParticipants: Participant[] = [
@@ -208,6 +210,11 @@ export function demoBridge(screen: string): Bridge {
     getProfile: async () => profile,
     setUsername: async (username) => ({ ...profile, username }),
     setNotifications: async (notifications) => ({ ...profile, notifications }),
+    setCheckUpdates: async (checkUpdates) => ({ ...profile, checkUpdates }),
+    // The start screen shows an update that is ready to install.
+    updateStatus: async () => (screen === 'start' ? { state: 'ready', version: '1.2.1' } : { state: 'idle' }),
+    onUpdate: () => () => {},
+    restartToUpdate: async () => {},
     setView: async (view) => ({ ...profile, view }),
     setSharingService: async (service) => {
       const url = service.trim() ? `wss://${service.trim()}/signal` : null;
