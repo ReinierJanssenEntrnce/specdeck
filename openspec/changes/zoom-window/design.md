@@ -10,7 +10,7 @@ What is there today:
 - On Windows and Linux, the menu deliberately takes no key the host's terminal needs (see the module comment in `menu.rs`).
 - The main window is built in `open_main_window`. The webview's own zoom hotkeys are off, which is Tauri's default.
 - Settings are a JSON file read into `Settings` (`settings.rs`). The struct derives `Eq` and uses `#[serde(default)]`, so new fields load from older files.
-- The host's terminal fits its pane with a `ResizeObserver` and reports the new columns and rows (`TerminalView.tsx`), which resizes the pty. A viewer's terminal takes the host's size and its container scrolls (`.terminal-host.fixed { overflow: auto }`).
+- The host's terminal fits its pane with a `ResizeObserver` and reports the new columns and rows (`TerminalView.tsx`), which resizes the pty. A viewer's terminal takes the host's size and its container scrolls (`.terminal-host.fixed { overflow: auto }`). (Since then the viewer's text scales to fill the pane's width; see Non-Goals.)
 - The settings window has a fixed size of 460×420 and cannot be resized.
 
 ## Goals / Non-Goals
@@ -24,7 +24,7 @@ What is there today:
 
 - Zooming the settings window. It has a fixed size, so zooming would clip it.
 - A separate terminal font size, or text-only scaling of the interface. Either could be added later on top of zoom.
-- Fitting the viewer's terminal font to the pane (growing past the zoomed size when there is room). We considered it, but it is a behavior change for viewers who never zoom.
+- Fitting the viewer's terminal font to the pane. Considered here and left out as a change for viewers who never zoom; it was later built on its own (`6ce3a9f`, `414de42`): the text scales from 6 to 48 px to fill the pane's width, so zoom changes the rest of the window but not the terminal's size on screen.
 - Pinch or Ctrl+mousewheel zoom.
 - Showing the zoom percentage on screen.
 

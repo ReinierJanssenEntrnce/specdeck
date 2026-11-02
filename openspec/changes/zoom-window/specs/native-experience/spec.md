@@ -35,15 +35,19 @@ The zoom level SHALL be one setting per person, the same whether they host or vi
 - **THEN** the zoom of the host and of every other viewer is unchanged
 
 ### Requirement: Terminal size under zoom
-A host's zoom SHALL resize the host's terminal to the columns and rows that fit the pane at that zoom, as resizing the window does. A viewer's terminal SHALL keep the host's columns and rows at the viewer's zoom, and SHALL scroll when it does not fit the viewer's pane.
+A host's zoom SHALL resize the host's terminal to the columns and rows that fit the pane at that zoom, as resizing the window does. A viewer's terminal SHALL keep the host's columns and rows and SHALL scale its text to fill the pane's width at any zoom, scrolling only when the smallest text size still does not fit.
 
 #### Scenario: Host zooms in
 - **WHEN** the host zooms in
 - **THEN** fewer columns and rows fit the host's terminal pane, the agent's terminal is resized to them, and viewers see the resized terminal
 
-#### Scenario: Viewer zooms in past the pane
-- **WHEN** a viewer zooms in until the host's terminal is wider than the viewer's terminal pane
-- **THEN** the viewer's terminal keeps the host's columns at the larger size and can be scrolled horizontally
+#### Scenario: Viewer zooms in
+- **WHEN** a viewer zooms in
+- **THEN** the toolbar, timeline and side panels get larger, and the viewer's terminal keeps the host's columns and still fills the pane's width
+
+#### Scenario: Pane too narrow for the smallest text
+- **WHEN** the host's terminal does not fit the viewer's pane even at the smallest text size
+- **THEN** the viewer's terminal can be scrolled horizontally
 
 ## MODIFIED Requirements
 

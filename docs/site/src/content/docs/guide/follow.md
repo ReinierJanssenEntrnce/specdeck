@@ -61,6 +61,7 @@ Agents report their state through the terminal (the [Program Status Protocol](ht
 | Switch between Timeline, Files and People | Select the tab, or press **⌘1**, **⌘2**, **⌘3** (macOS) or **Ctrl+1**, **Ctrl+2**, **Ctrl+3** (Windows, Linux) |
 | Copy | Select text in the terminal, the timeline or a diff and copy it: **⌘C** on macOS; on Windows and Linux **Ctrl+C** copies while text is selected (in your own terminal, without a selection it interrupts the agent, as in any terminal) and **Ctrl+Shift+C** always copies. Copying never sends anything to the session |
 | Make the side panel wider or narrower | Drag the line between the terminal and the side panel, or focus it and use the left and right arrow keys. SpecDeck remembers the width |
+| Read the terminal larger or smaller | The terminal keeps the host's size and scales its text to fill the width of your terminal pane, following the latest output. Give the pane more room (a wider window, a narrower side panel) for larger text. [Zoom](/specdeck/guide/keyboard/) makes the rest of the window larger; the terminal keeps filling its pane |
 
 What you scroll, search or open only changes your own view.
 

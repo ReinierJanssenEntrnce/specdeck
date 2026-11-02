@@ -10,7 +10,7 @@ SpecDeck's text is a fixed size: the interface uses fixed pixel sizes, the termi
 - Zoom scales the whole main window (toolbar, timeline, side panels and terminal) in fixed steps from 50% to 200%.
 - The zoom level is one setting per person, the same whether they host or view. It is saved and restored on the next start.
 - A host's zoom changes how many columns and rows fit their terminal pane, so the agent's terminal is resized for everyone, as it is when the host resizes the window.
-- A viewer's terminal keeps the host's columns and rows at the zoomed size, and scrolls when it no longer fits the pane, as it already does today when the host's terminal is larger than the viewer's pane.
+- A viewer's terminal keeps the host's columns and rows, and scales its text to fill the pane's width at any zoom (built separately, in "Scale a viewer's terminal text to fit the window"). It scrolls only when the smallest text size still does not fit.
 - The keyboard shortcuts dialog and the keyboard guide in the docs list the new shortcuts.
 
 ## Capabilities
