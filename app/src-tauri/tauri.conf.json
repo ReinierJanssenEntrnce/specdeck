@@ -30,6 +30,7 @@
       "signingIdentity": "-",
       "minimumSystemVersion": "11.0"
     },
+    "publisher": "SpecDeck",
     "category": "DeveloperTool",
     "shortDescription": "Run a coding agent with your team watching along",
     "longDescription": "SpecDeck runs a coding agent (Claude Code, OpenCode or omp) on your computer while teammates follow the terminal and, for Claude Code, a timeline of prompts, tool calls and file changes."
