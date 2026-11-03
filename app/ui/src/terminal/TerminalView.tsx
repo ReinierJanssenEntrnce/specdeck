@@ -5,6 +5,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import type { TerminalStep } from './stream';
+import { isNewlineKey } from './keys';
 import { isMac } from '../menu/menu';
 
 export interface SearchResult {
@@ -122,9 +123,18 @@ export const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalV
     // workspace), and in a viewer's read-only terminal Tab moves focus on, as anywhere else.
     // On Windows and Linux, Ctrl+C copies when text is selected and interrupts otherwise, as in
     // their terminals; Ctrl+Shift+C and Ctrl+Shift+V always copy and paste. macOS uses Cmd.
+    // Shift+Enter in the host's terminal sends `\n`, which every supported agent takes as a new
+    // line; xterm would send `\r`, as for Enter. Its keypress is stopped too, or xterm sends `\r`.
     term.attachCustomKeyEventHandler((event) => {
       if (event.key === 'F6') return false;
       if (event.key === 'Tab' && props.mode === 'viewer') return false;
+      if (props.mode === 'host' && isNewlineKey(event)) {
+        if (event.type === 'keydown') {
+          event.preventDefault();
+          term.input('\n');
+        }
+        return false;
+      }
       if (!isMac) {
         if (event.type !== 'keydown' || !event.ctrlKey || event.altKey || event.metaKey) return true;
         const key = event.key.toLowerCase();

@@ -10,6 +10,7 @@ Everything in SpecDeck works with the keyboard alone, and every control has a na
 | See all keyboard shortcuts | **⌘/** (macOS) or **F1** (Windows, Linux), or **Help › Keyboard Shortcuts** |
 | Move between the toolbar, the terminal and the side panel | **F6**, or **Shift+F6** to go back. In your own terminal, Tab goes to the agent, so F6 is the way out |
 | Move on from a viewer's terminal | **Tab**, as anywhere else |
+| Start a new line in the agent's prompt, in your own terminal | **Shift+Enter** |
 | Switch side-panel tabs | The left and right arrow keys, once a tab has focus |
 | Host a session | **⌘N** (macOS) or **Ctrl+Shift+N** (Windows, Linux) |
 | Join a session | **⌘J** (macOS) or **Ctrl+Shift+J** (Windows, Linux) |
