@@ -3,7 +3,8 @@
 ## 1. Settings migration
 
 - [x] 1.1 Add the migration as a function that takes the new config folder and copies its sibling `com.entrnce.specdeck` into place through a temporary folder when the new one does not exist (design decision 2); unit tests in a temporary directory cover: old folder copied with files and `profiles/` subfolders, new folder already present left alone, no old folder does nothing, a failed copy leaves no new folder; verify `cargo test -p specdeck-app` passes
-- [ ] 1.2 Run it from a small plugin registered after `tauri-plugin-single-instance` and before `tauri-plugin-window-state` in `lib.rs`, logging a failed copy; verify with a debug build on this Mac that a hand-made `~/Library/Application Support/com.entrnce.specdeck` with `settings.json` and `.window-state.json` is copied and the window opens where that state says
+- [x] 1.2 Run it from a small plugin registered after `tauri-plugin-single-instance` and before `tauri-plugin-window-state` in `lib.rs`, logging a failed copy; verify with a debug build on this Mac that a hand-made `~/Library/Application Support/com.entrnce.specdeck` with `settings.json` and `.window-state.json` is copied and the window opens where that state says
+  - 2026-11-03: debug build with `HOME` pointed at a scratch folder, AeroSpace closed: an old folder holding a window state saved by the plugin (0,39, 1533x869) was copied on the first start and the window opened at exactly that place and size; quitting saves to the new folder and the old one stays untouched. Hand-written window states were not applied, with or without the migration, so the check used a state the plugin wrote itself
 
 ## 2. Rename
 
