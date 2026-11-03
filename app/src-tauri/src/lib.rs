@@ -1,5 +1,6 @@
 mod host;
 mod menu;
+mod migrate;
 mod notify;
 mod services;
 mod settings;
@@ -1060,6 +1061,8 @@ pub fn run() {
         None => ".window-state.json".into(),
     };
     let app = builder
+        // Before window state, which reads its file when it is set up.
+        .plugin(migrate::init())
         .plugin(
             tauri_plugin_window_state::Builder::new()
                 .with_filename(window_state_file)

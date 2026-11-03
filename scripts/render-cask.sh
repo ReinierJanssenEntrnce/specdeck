@@ -45,7 +45,12 @@ cask "specdeck" do
 
   app "SpecDeck.app"
 
+  # Releases up to 1.3 used the identifier com.entrnce.specdeck; upgraded installs keep its folders.
   zap trash: [
+    "~/Library/Application Support/nl.nickhartjes.specdeck",
+    "~/Library/Caches/nl.nickhartjes.specdeck",
+    "~/Library/Saved Application State/nl.nickhartjes.specdeck.savedState",
+    "~/Library/WebKit/nl.nickhartjes.specdeck",
     "~/Library/Application Support/com.entrnce.specdeck",
     "~/Library/Caches/com.entrnce.specdeck",
     "~/Library/Saved Application State/com.entrnce.specdeck.savedState",
