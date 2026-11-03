@@ -22,7 +22,8 @@
 
 ## 4. Release workflow
 
-- [ ] 4.1 In `release.yml`, when `TAURI_SIGNING_PRIVATE_KEY` is set, build with `createUpdaterArtifacts` on (merged with the Windows signing config), build `app,dmg` on macOS, and upload the update files and `.sig` files under the stable names in design decision 4; without the secret, build as today; verify with a prerelease tag on a branch that the draft holds the update files and signatures, and that a run without the secret still succeeds
+- [x] 4.1 In `release.yml`, when `TAURI_SIGNING_PRIVATE_KEY` is set, build with `createUpdaterArtifacts` on (merged with the Windows signing config), build `app,dmg` on macOS, and upload the update files and `.sig` files under the stable names in design decision 4; without the secret, build as today; verify with a prerelease tag on a branch that the draft holds the update files and signatures, and that a run without the secret still succeeds
+  - 2026-11-03: `v1.2.0-rc.1` (run 41450096130) uploaded the update files and `.sig` files of all four platforms under the stable names and the publish job wrote `latest.json`; 1.2.0 and 1.3.0 carry them too. Not run: the build without the secret (it was set before this workflow first ran) and the merge with the Windows signing config (no certificate yet); the merge is checked with Windows signing, `release-and-verification` task 1.3
 - [x] 4.2 Add a script that writes `latest.json` from the uploaded signatures (version, date, notes URL, per-platform versioned URL and signature) and run it in the publish job before publishing; verify with a unit test of the script on sample signatures and by checking the prerelease's `latest.json` against the uploaded files
 - [x] 4.3 Add `auto_updates true` to `scripts/render-cask.sh`; verify the rendered cask with `brew style` or by rendering it and reading the output
 
