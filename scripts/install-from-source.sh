@@ -65,17 +65,25 @@ fi
 cat > "$bin_dir/specdeck" << EOF
 #!/usr/bin/env bash
 # Starts SpecDeck (installed by scripts/install-from-source.sh).
-# Usage: specdeck [--foreground]
-#   By default it runs in the background and logs to ~/.cache/specdeck.log.
-#   --foreground (-f) keeps it attached to the terminal: output shows there, Ctrl+C quits.
+# Usage: specdeck [--background]
+#   By default it stays attached to the terminal: output shows there, Ctrl+C quits.
+#   --background (-b) detaches it and logs to ~/.cache/specdeck.log.
 $env_line
-if [ "\${1:-}" = "--foreground" ] || [ "\${1:-}" = "-f" ]; then
-  shift
-  exec "$app" "\$@"
-fi
-mkdir -p "\$HOME/.cache"
-setsid nohup "$app" "\$@" > "\$HOME/.cache/specdeck.log" 2>&1 < /dev/null &
-echo "SpecDeck started (log: ~/.cache/specdeck.log)"
+case "\${1:-}" in
+  --background | -b)
+    shift
+    mkdir -p "\$HOME/.cache"
+    setsid nohup "$app" "\$@" > "\$HOME/.cache/specdeck.log" 2>&1 < /dev/null &
+    echo "SpecDeck started in the background (log: ~/.cache/specdeck.log)"
+    ;;
+  --foreground | -f)
+    shift
+    exec "$app" "\$@"
+    ;;
+  *)
+    exec "$app" "\$@"
+    ;;
+esac
 EOF
 chmod +x "$bin_dir/specdeck"
 
@@ -91,7 +99,7 @@ Terminal=false
 EOF
 
 echo
-echo "SpecDeck is installed. Start it with: specdeck (or specdeck --foreground to keep it in this terminal)"
+echo "SpecDeck is installed. Start it with: specdeck (or specdeck --background to free the terminal)"
 case ":$PATH:" in
   *":$bin_dir:"*) ;;
   *) echo "Add $bin_dir to your PATH first, or open a new terminal (Ubuntu adds it when the folder exists)." ;;

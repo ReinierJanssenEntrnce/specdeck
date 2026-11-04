@@ -54,7 +54,7 @@ git clone https://github.com/nickhartjes/specdeck.git ~/specdeck
 
 The script asks for your sudo password once to install the system libraries, installs Rust, Node and the other build tools for your user only with [mise](https://mise.jdx.dev), and builds the app with the public sharing service, like the release builds. The first build takes several minutes.
 
-Then start SpecDeck with `specdeck`, or from the application menu. `specdeck` runs it in the background and logs to `~/.cache/specdeck.log`; `specdeck --foreground` keeps it in the terminal, with its output there, until you close the window or press Ctrl+C. In WSL it also appears in the Windows Start menu under **Ubuntu**, and `wsl -- bash -lc specdeck` starts it from PowerShell.
+Then start SpecDeck with `specdeck`, or from the application menu. `specdeck` keeps the terminal attached, with the app's output there, until you close the window or press Ctrl+C; `specdeck --background` frees the terminal and logs to `~/.cache/specdeck.log`. In WSL it also appears in the Windows Start menu under **Ubuntu**, and `wsl -- bash -lc specdeck` starts it from PowerShell.
 
 - **Coding agents run inside Linux**: install the agent (Claude Code, Codex, …) in Ubuntu as well; the Windows one is not used.
 - **Update**: run `git -C ~/specdeck pull` and the script again. A build from source does not update itself.
