@@ -17,6 +17,7 @@ Documentation, for using the app and for running your own sharing service: **[ni
 | macOS 11 or later (Apple silicon, Intel) | `brew install --cask nickhartjes/tap/specdeck`, or the `.dmg` from [Releases](https://github.com/nickhartjes/specdeck/releases) |
 | Windows | `SpecDeck-x64-setup.exe` from [Releases](https://github.com/nickhartjes/specdeck/releases) |
 | Linux | `nix run github:nickhartjes/specdeck` (builds from source, x86_64 and aarch64), or the AppImage or `.deb` from [Releases](https://github.com/nickhartjes/specdeck/releases) |
+| Debian, Ubuntu, or Windows through WSL 2 (from source) | `scripts/install-from-source.sh` in a clone of this repository ([details](https://nickhartjes.github.io/specdeck/install/#from-source-debian-ubuntu-and-wsl)) |
 
 With Nix, add it to a system or home configuration through the flake's `packages.<system>.specdeck` or `overlays.default`. The Nix package uses the public sharing service, `wss://specdeck.hartj.es/signal`, like the release builds; override it with `specdeck.override { signallingUrl = "wss://…/signal"; }`, or set `SPECDECK_SIGNALLING_URL` when starting the app.
 
@@ -40,7 +41,7 @@ Releases built before the signing certificates are in place are unsigned, so the
 
 ## Development
 
-Tools are pinned in [`mise.toml`](mise.toml): Rust, Node, pnpm, just and cmake (needed to build libdatachannel). With [mise](https://mise.jdx.dev) installed, run `mise install`. On Linux, Tauri also needs the WebKitGTK development packages (see the CI workflow for the list).
+Tools are pinned in [`mise.toml`](mise.toml): Rust, Node, pnpm, just and cmake (needed to build libdatachannel). With [mise](https://mise.jdx.dev) installed, run `mise install`. On Linux, Tauri also needs the WebKitGTK development packages (see the CI workflow for the list), and libdatachannel's bindings need libclang (`libclang-dev`, already present on GitHub's runners). Builds from source use a local sharing service (`ws://127.0.0.1:18081/signal`) unless `SPECDECK_SIGNALLING_URL` is set when building.
 
 ```sh
 just install   # install JavaScript dependencies
